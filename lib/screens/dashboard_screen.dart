@@ -3,10 +3,15 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../models/health_data.dart';
+import '../services/audio_device_service.dart';
+import '../services/bluetooth_service.dart';
 import '../services/data_service.dart';
 import '../services/health_rules.dart';
+import '../services/ml_insight_service.dart';
+import '../services/session_service.dart';
 import '../services/settings_service.dart';
-import '../services/voice_service.dart';
+import '../theme/app_theme.dart';
+import '../widgets/app_chrome.dart';
 import '../widgets/mini_graph.dart';
 import 'alerts_screen.dart';
 import 'bluetooth_screen.dart';
@@ -22,7 +27,11 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   late final DataService dataService;
+  final audioDevices = AudioDeviceService();
+  final bluetooth = MyBluetoothService();
+  final settings = SettingsService();
   StreamSubscription<Map<String, double>>? _subscription;
+  VoidCallback? _bluetoothListener;
 
   final bpmData = <HealthData>[];
   final spo2Data = <HealthData>[];
@@ -30,26 +39,61 @@ class _DashboardScreenState extends State<DashboardScreen> {
   final gestureData = <HealthData>[];
   final fallData = <HealthData>[];
   final batteryData = <HealthData>[];
-
-  int lastSpokenGesture = 0;
-  bool useDummy = true;
+  final esp32Data = <HealthData>[];
 
   @override
   void initState() {
     super.initState();
     dataService = DataService();
 
-    if (useDummy) {
-      dataService.startDummyData(context);
+    if (settings.dummyDataEnabled && !bluetooth.isEsp32Connected) {
+      dataService.startDummyData();
     }
 
+    audioDevices.refresh();
     _seedGraphsFromHistory();
-    _subscription = dataService.stream.listen(_handleReading);
+    _subscription = dataService.stream.listen((_) {
+      final entry = dataService.latestData;
+      if (!mounted) return;
+      setState(() {
+        if (entry == null) {
+          bpmData.clear();
+          spo2Data.clear();
+          tempData.clear();
+          gestureData.clear();
+          fallData.clear();
+          batteryData.clear();
+          esp32Data.clear();
+          return;
+        }
+        _appendEntry(entry);
+      });
+    });
+
+    _bluetoothListener = () {
+      if (!mounted) return;
+      setState(() {
+        _pushPoint(
+          esp32Data,
+          bluetooth.isEsp32Connected ? 1 : 0,
+          DateTime.now(),
+        );
+      });
+    };
+    bluetooth.addListener(_bluetoothListener!);
+    _pushPoint(
+      esp32Data,
+      bluetooth.isEsp32Connected ? 1 : 0,
+      DateTime.now(),
+    );
   }
 
   @override
   void dispose() {
     _subscription?.cancel();
+    if (_bluetoothListener != null) {
+      bluetooth.removeListener(_bluetoothListener!);
+    }
     super.dispose();
   }
 
@@ -59,47 +103,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
         : dataService.history;
 
     for (final entry in recent) {
-      _appendEntry(entry, notify: false);
+      _appendEntry(entry);
     }
   }
 
-  void _handleReading(Map<String, double> data) {
-    final entry = dataService.latestData;
-    if (entry == null || !mounted) return;
-
-    setState(() => _appendEntry(entry));
-    _handleGestureVoice((entry['gesture'] as num).toInt());
-  }
-
-  void _appendEntry(Map<String, dynamic> entry, {bool notify = true}) {
+  void _appendEntry(Map<String, dynamic> entry) {
     final time = entry['time'] is DateTime
         ? entry['time'] as DateTime
         : DateTime.now();
-    _updateData(bpmData, (entry['bpm'] as num).toDouble(), time);
-    _updateData(spo2Data, (entry['spo2'] as num).toDouble(), time);
-    _updateData(tempData, (entry['temp'] as num).toDouble(), time);
-    _updateData(gestureData, (entry['gesture'] as num).toDouble(), time);
-    _updateData(fallData, (entry['fall'] as num).toDouble(), time);
-    _updateData(batteryData, (entry['battery'] as num).toDouble(), time);
+    _pushPoint(bpmData, (entry['bpm'] as num).toDouble(), time);
+    _pushPoint(spo2Data, (entry['spo2'] as num).toDouble(), time);
+    _pushPoint(tempData, (entry['temp'] as num).toDouble(), time);
+    _pushPoint(gestureData, (entry['gesture'] as num).toDouble(), time);
+    _pushPoint(fallData, (entry['fall'] as num).toDouble(), time);
+    _pushPoint(batteryData, (entry['battery'] as num).toDouble(), time);
+    _pushPoint(esp32Data, bluetooth.isEsp32Connected ? 1 : 0, time);
   }
 
-  void _updateData(List<HealthData> list, double value, DateTime time) {
+  void _pushPoint(List<HealthData> list, double value, DateTime time) {
     list.add(HealthData(value, time));
     if (list.length > 24) list.removeAt(0);
-  }
-
-  void _handleGestureVoice(int gesture) {
-    if (gesture == 0) {
-      lastSpokenGesture = 0;
-      return;
-    }
-
-    if (gesture == lastSpokenGesture) return;
-    lastSpokenGesture = gesture;
-
-    if (SettingsService().soundEnabled) {
-      VoiceService.speak(HealthRules.gestureText(gesture));
-    }
   }
 
   @override
@@ -107,198 +130,325 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final latest = dataService.latestData;
     final status = HealthRules.overallStatus(latest);
     final statusColor = _statusColor(status);
-    final battery = _latestValue(batteryData, fallback: 0);
-    final hasFall = _latestValue(fallData, fallback: 0) >= 5;
+    final bleConnected = bluetooth.isEsp32Connected;
+    final gesture = _latestValue(gestureData).toInt();
+    final fallDetected = _latestValue(fallData) > 0;
+    final ml = MlInsightService.analyze(dataService.recordedVitalHistory);
+    final dashboardLogo = AppThemeColors.isDark(context)
+        ? 'assets/images/logo_dark.jpg'
+        : 'assets/images/logo.png';
 
-    return Scaffold(
-      backgroundColor: const Color(0xFF0A0F1C),
-      bottomNavigationBar: BottomNavigationBar(
-        backgroundColor: const Color(0xFF0A0F1C),
-        selectedItemColor: Colors.blue,
-        unselectedItemColor: Colors.grey,
-        type: BottomNavigationBarType.fixed,
-        onTap: _openTab,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.bar_chart),
-            label: 'Reports',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.notifications),
-            label: 'Alerts',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.bluetooth),
-            label: 'Bluetooth',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.settings),
-            label: 'Settings',
-          ),
-        ],
-      ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(15),
-          child: Column(
-            children: [
-              _header(status, statusColor, battery),
-              const SizedBox(height: 16),
-              _statusStrip(latest),
-              const SizedBox(height: 16),
-              GridView.count(
-                crossAxisCount: 2,
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 12,
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                childAspectRatio: .98,
-                children: [
-                  buildCard(
-                    value: '${_latestValue(bpmData).toStringAsFixed(0)} BPM',
-                    label: 'Heart Rate',
-                    icon: Icons.favorite,
-                    color: _vitalColor('bpm', _latestValue(bpmData)),
-                    graphData: bpmData,
-                  ),
-                  buildCard(
-                    value: '${_latestValue(spo2Data).toStringAsFixed(0)}%',
-                    label: 'SpO2',
-                    icon: Icons.water_drop,
-                    color: _vitalColor('spo2', _latestValue(spo2Data)),
-                    graphData: spo2Data,
-                  ),
-                  buildCard(
-                    value: '${_latestValue(tempData).toStringAsFixed(1)} C',
-                    label: 'Temperature',
-                    icon: Icons.thermostat,
-                    color: _vitalColor('temp', _latestValue(tempData)),
-                    graphData: tempData,
-                  ),
-                  buildCard(
-                    value: HealthRules.gestureText(
-                      _latestValue(gestureData).toInt(),
-                    ),
-                    label: 'Gesture',
-                    icon: Icons.pan_tool,
-                    color: _latestValue(gestureData) > 0
-                        ? Colors.cyan
-                        : Colors.green,
-                    graphData: gestureData,
-                  ),
-                  buildCard(
-                    value: hasFall ? 'Fall Detected' : 'No Fall',
-                    label: 'Fall Detection',
-                    icon: Icons.warning_amber_rounded,
-                    color: hasFall ? Colors.red : Colors.green,
-                    graphData: fallData,
-                  ),
-                  buildCard(
-                    value: '${battery.toStringAsFixed(0)}%',
-                    label: 'Battery',
-                    icon: Icons.battery_5_bar,
-                    color: battery < 20
-                        ? Colors.red
-                        : battery < 50
-                        ? Colors.orange
-                        : Colors.green,
-                    graphData: batteryData,
-                  ),
-                ],
+    return AnimatedBuilder(
+      animation: Listenable.merge([audioDevices, bluetooth, settings, dataService]),
+      builder: (context, _) {
+        return Scaffold(
+          backgroundColor: Colors.transparent,
+          bottomNavigationBar: BottomNavigationBar(
+            type: BottomNavigationBarType.fixed,
+            onTap: _openTab,
+            items: const [
+              BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.bar_chart),
+                label: 'Reports',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.notifications),
+                label: 'Alerts',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.bluetooth),
+                label: 'Bluetooth',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.settings),
+                label: 'Settings',
               ),
             ],
           ),
-        ),
+          body: AppChrome(
+            padding: const EdgeInsets.fromLTRB(15, 8, 15, 18),
+            safeBottom: true,
+            child: SingleChildScrollView(
+              child: Column(
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Image.asset(
+                        dashboardLogo,
+                        height: 52,
+                        fit: BoxFit.contain,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: const AccentHeadline(
+                          title: 'Live Monitoring',
+                          subtitle:
+                              'Vitals, alerts, and predictions aligned in one flowing care view.',
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: PopupMenuButton<String>(
+                          color: AppThemeColors.panel(context),
+                          icon: Container(
+                            padding: const EdgeInsets.all(2),
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              gradient: LinearGradient(
+                                colors: [
+                                  AppThemeColors.accent(context).withValues(alpha: .18),
+                                  AppThemeColors.accentSecondary(context)
+                                      .withValues(alpha: .18),
+                                ],
+                              ),
+                            ),
+                            child: CircleAvatar(
+                              radius: 20,
+                              backgroundColor: AppThemeColors.panel(context),
+                              child: Icon(
+                                Icons.person_outline,
+                                color: AppThemeColors.textPrimary(context),
+                              ),
+                            ),
+                          ),
+                          onSelected: (value) async {
+                            if (value == 'settings') {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => const SettingsScreen(),
+                                ),
+                              );
+                            } else if (value == 'logout') {
+                              await SessionService.logout(context);
+                            }
+                          },
+                          itemBuilder: (context) => [
+                            PopupMenuItem(
+                              value: 'settings',
+                              child: Text(
+                                'Settings',
+                                style: TextStyle(
+                                  color: AppThemeColors.textPrimary(context),
+                                ),
+                              ),
+                            ),
+                            PopupMenuItem(
+                              value: 'logout',
+                              child: Text(
+                                'Logout',
+                                style: TextStyle(
+                                  color: AppThemeColors.danger(context),
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  _statusHero(status, statusColor, bleConnected),
+                  const SizedBox(height: 16),
+                  _statusIcons(),
+                  const SizedBox(height: 16),
+                  _syncBanner(latest),
+                  const SizedBox(height: 12),
+                  _powerModeBanner(),
+                  const SizedBox(height: 12),
+                  _mlInsightBanner(ml),
+                  const SizedBox(height: 16),
+                  GridView.count(
+                    crossAxisCount: 2,
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    childAspectRatio: .98,
+                    children: [
+                      _metricCard(
+                        value:
+                            '${_latestValue(bpmData).toStringAsFixed(0)} BPM',
+                        label: 'Heart Rate',
+                        icon: Icons.favorite,
+                        color: _vitalColor('bpm', _latestValue(bpmData)),
+                        graphData: bpmData,
+                      ),
+                      _metricCard(
+                        value: '${_latestValue(spo2Data).toStringAsFixed(0)}%',
+                        label: 'SpO2',
+                        icon: Icons.water_drop,
+                        color: _vitalColor('spo2', _latestValue(spo2Data)),
+                        graphData: spo2Data,
+                      ),
+                      _metricCard(
+                        value: '${_latestValue(tempData).toStringAsFixed(1)} C',
+                        label: 'Temperature',
+                        icon: Icons.thermostat,
+                        color: _vitalColor('temp', _latestValue(tempData)),
+                        graphData: tempData,
+                      ),
+                      _metricCard(
+                        value: HealthRules.gestureText(gesture),
+                        label: 'Gesture',
+                        icon: Icons.pan_tool,
+                        color: gesture > 0 ? Colors.cyan : Colors.green,
+                        graphData: gestureData,
+                      ),
+                      _metricCard(
+                        value: fallDetected ? 'Fall Detected' : 'No Fall',
+                        label: 'Fall Detection',
+                        icon: Icons.warning_amber_rounded,
+                        color: fallDetected ? Colors.red : Colors.green,
+                        graphData: fallData,
+                      ),
+                      _metricCard(
+                        value: bleConnected ? 'Transmitting' : 'Disconnected',
+                        label: 'ESP32 Link',
+                        icon: bleConnected
+                            ? Icons.bluetooth_connected
+                            : Icons.bluetooth_disabled,
+                        color: bleConnected ? Colors.blue : Colors.red,
+                        graphData: esp32Data,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _statusIcons() {
+    final battery = _latestValue(batteryData);
+    final chargingColor = battery < 30
+        ? AppThemeColors.danger(context)
+        : AppThemeColors.success(context);
+
+    return GlassPanel(
+      padding: const EdgeInsets.all(16),
+      child: Row(
+        children: [
+          Expanded(
+            child: _statusIconTile(
+              icon: Icons.battery_charging_full_rounded,
+              color: chargingColor,
+              title: 'Glove Battery',
+              subtitle: '${battery.toStringAsFixed(0)}%',
+              active: true,
+            ),
+          ),
+          Expanded(
+            child: _statusIconTile(
+              icon: Icons.speaker_group,
+              color: audioDevices.isSpeakerConnected
+                  ? AppThemeColors.success(context)
+                  : Colors.grey,
+              title: 'Speaker',
+              subtitle: audioDevices.isSpeakerConnected
+                  ? audioDevices.speakerName
+                  : 'Not connected',
+              active: audioDevices.isSpeakerConnected,
+            ),
+          ),
+          Expanded(
+            child: _statusIconTile(
+              icon: Icons.memory,
+              color: bluetooth.isEsp32Connected ? Colors.blue : Colors.grey,
+              title: 'ESP32',
+              subtitle: bluetooth.isEsp32Connected
+                  ? bluetooth.connectedDeviceName
+                  : 'Disconnected',
+              active: bluetooth.isEsp32Connected,
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _header(String status, Color statusColor, double battery) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+  Widget _statusIconTile({
+    required IconData icon,
+    required Color color,
+    required String title,
+    required String subtitle,
+    required bool active,
+  }) {
+    return Column(
       children: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'KineSentry Hub',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-              ),
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 220),
+          height: 42,
+          width: 42,
+          decoration: BoxDecoration(
+            color: active
+                ? color.withValues(alpha: .14)
+                : AppThemeColors.panelAlt(context),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: active ? color : AppThemeColors.border(context),
             ),
-            Row(
-              children: [
-                Icon(Icons.circle, color: statusColor, size: 10),
-                const SizedBox(width: 6),
-                Text(status, style: TextStyle(color: statusColor)),
-              ],
-            ),
-          ],
-        ),
-        Column(
-          children: [
-            Stack(
-              alignment: Alignment.center,
-              children: [
-                SizedBox(
-                  height: 62,
-                  width: 62,
-                  child: CircularProgressIndicator(
-                    value: (battery / 100).clamp(0, 1),
-                    strokeWidth: 6,
-                    backgroundColor: Colors.white10,
-                    valueColor: AlwaysStoppedAnimation(
-                      battery < 20
-                          ? Colors.red
-                          : battery < 50
-                          ? Colors.orange
-                          : Colors.green,
+            boxShadow: active
+                ? [
+                    BoxShadow(
+                      color: color.withValues(alpha: .18),
+                      blurRadius: 14,
+                      spreadRadius: 1,
                     ),
-                  ),
-                ),
-                Text(
-                  '${battery.toStringAsFixed(0)}%',
-                  style: const TextStyle(color: Colors.white),
-                ),
-              ],
-            ),
-            const SizedBox(height: 5),
-            const Text(
-              'Battery',
-              style: TextStyle(color: Colors.white54, fontSize: 12),
-            ),
-          ],
+                  ]
+                : null,
+          ),
+          child: Icon(icon, color: color),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          title,
+          style: TextStyle(
+            color: AppThemeColors.textPrimary(context),
+            fontWeight: FontWeight.w600,
+          ),
+          textAlign: TextAlign.center,
+        ),
+        Text(
+          subtitle,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: AppThemeColors.textTertiary(context),
+            fontSize: 11,
+          ),
         ),
       ],
     );
   }
 
-  Widget _statusStrip(Map<String, dynamic>? latest) {
+  Widget _syncBanner(Map<String, dynamic>? latest) {
     final time = latest?['time'] is DateTime
         ? latest!['time'] as DateTime
         : null;
+    final text = time == null
+        ? 'Waiting for first hub reading'
+        : 'Synced ${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')} | ${dataService.history.length} readings';
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xFF121A2F),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.white10),
-      ),
+    return GlassPanel(
+      padding: const EdgeInsets.all(14),
       child: Row(
         children: [
-          const Icon(Icons.sync, color: Colors.blue, size: 20),
+          Icon(Icons.sync, color: AppThemeColors.accent(context)),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              time == null
-                  ? 'Waiting for first hub reading'
-                  : 'Synced ${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')} | ${dataService.history.length} readings',
-              style: const TextStyle(color: Colors.white70),
+              text,
+              style: TextStyle(
+                color: AppThemeColors.textSecondary(context),
+              ),
             ),
           ),
         ],
@@ -306,20 +456,114 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget buildCard({
+  Widget _powerModeBanner() {
+    final enabled = settings.deepSleepEnabled;
+    final color = enabled
+        ? const Color(0xFF8B5CF6)
+        : AppThemeColors.textTertiary(context);
+
+    return GlassPanel(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      borderColor: enabled
+          ? color.withValues(alpha: .6)
+          : AppThemeColors.border(context),
+      child: Row(
+        children: [
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 220),
+            height: 34,
+            width: 34,
+            decoration: BoxDecoration(
+              color: enabled ? color.withValues(alpha: .14) : Colors.white10,
+              borderRadius: BorderRadius.circular(8),
+              boxShadow: enabled
+                  ? [
+                      BoxShadow(
+                        color: color.withValues(alpha: .22),
+                        blurRadius: 14,
+                      ),
+                    ]
+                  : null,
+            ),
+            child: Icon(Icons.bedtime_rounded, color: color, size: 19),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              enabled ? 'Deep Sleep Mode armed for hardware power saving' : 'Deep Sleep Mode off',
+              style: TextStyle(
+                color: enabled
+                    ? AppThemeColors.textPrimary(context)
+                    : AppThemeColors.textSecondary(context),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _mlInsightBanner(MlInsightResult ml) {
+    final riskColor = ml.riskScore >= 70
+        ? AppThemeColors.danger(context)
+        : ml.riskScore >= 35
+        ? AppThemeColors.warning(context)
+        : AppThemeColors.success(context);
+
+    return GlassPanel(
+      padding: const EdgeInsets.all(14),
+      glowColor: riskColor.withValues(alpha: .12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            height: 36,
+            width: 36,
+            decoration: BoxDecoration(
+              color: riskColor.withValues(alpha: .14),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(Icons.insights_outlined, color: riskColor),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'ML Insight  |  ${ml.riskLabel} (${ml.riskScore.toStringAsFixed(0)}%)',
+                  style: TextStyle(
+                    color: riskColor,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  ml.summary,
+                  style: TextStyle(
+                    color: AppThemeColors.textSecondary(context),
+                    height: 1.3,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _metricCard({
     required String value,
     required String label,
     required IconData icon,
     required Color color,
     required List<HealthData> graphData,
   }) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xFF121A2F),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.white10),
-      ),
+    return GlassPanel(
+      padding: const EdgeInsets.all(14),
+      glowColor: color.withValues(alpha: .10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -339,16 +583,81 @@ class _DashboardScreenState extends State<DashboardScreen> {
             value,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: Colors.white,
+            style: TextStyle(
+              color: AppThemeColors.textPrimary(context),
               fontSize: 17,
               fontWeight: FontWeight.bold,
             ),
           ),
-          Text(label, style: const TextStyle(color: Colors.white54)),
+          Text(
+            label,
+            style: TextStyle(color: AppThemeColors.textTertiary(context)),
+          ),
           const SizedBox(height: 8),
           Expanded(
             child: MiniGraph(data: graphData, color: color, label: label),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _statusHero(String status, Color statusColor, bool connected) {
+    return GlassPanel(
+      padding: const EdgeInsets.all(18),
+      glowColor: statusColor.withValues(alpha: .12),
+      child: Row(
+        children: [
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 240),
+            height: 62,
+            width: 62,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: LinearGradient(
+                colors: [
+                  statusColor.withValues(alpha: .30),
+                  statusColor.withValues(alpha: .10),
+                ],
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: statusColor.withValues(alpha: .22),
+                  blurRadius: 18,
+                  spreadRadius: 2,
+                ),
+              ],
+            ),
+            child: Icon(
+              connected ? Icons.wifi_tethering_rounded : Icons.sensors_off_outlined,
+              color: statusColor,
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  status,
+                  style: TextStyle(
+                    color: statusColor,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  connected
+                      ? 'Hub and monitoring visuals are active and updating in real time.'
+                      : 'Reconnect the hub to restore live monitoring and trigger flow.',
+                  style: TextStyle(
+                    color: AppThemeColors.textSecondary(context),
+                    height: 1.3,
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -379,8 +688,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  double _latestValue(List<HealthData> list, {double fallback = 0}) {
-    return list.isEmpty ? fallback : list.last.value;
+  double _latestValue(List<HealthData> list) {
+    return list.isEmpty ? 0 : list.last.value;
   }
 
   Color _statusColor(String status) {

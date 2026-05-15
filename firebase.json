@@ -1,1 +1,27 @@
-{"flutter":{"platforms":{"android":{"default":{"projectId":"kinesentry-77c9a","appId":"1:982090943295:android:f6bc5803dcbbc58206218a","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"kinesentry-77c9a","configurations":{"android":"1:982090943295:android:f6bc5803dcbbc58206218a","ios":"1:982090943295:ios:f5f344f77092c1e906218a","macos":"1:982090943295:ios:f5f344f77092c1e906218a","web":"1:982090943295:web:d4c335a3d878563c06218a","windows":"1:982090943295:web:1b7e608020a73b9d06218a"}}}}}}
+{
+  "note": "Sanitized placeholder file for GitHub upload.",
+  "restore": "Run flutterfire configure to regenerate this file with your real Firebase project values.",
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "YOUR_FIREBASE_PROJECT_ID",
+          "appId": "YOUR_ANDROID_APP_ID",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "YOUR_FIREBASE_PROJECT_ID",
+          "configurations": {
+            "android": "YOUR_ANDROID_APP_ID",
+            "ios": "YOUR_IOS_APP_ID",
+            "macos": "YOUR_MACOS_APP_ID",
+            "web": "YOUR_WEB_APP_ID",
+            "windows": "YOUR_WINDOWS_APP_ID"
+          }
+        }
+      }
+    }
+  }
+}

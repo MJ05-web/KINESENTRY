@@ -1,13 +1,16 @@
 Map<String, double> parseData(String raw) {
-
   final parts = raw.split(",");
   Map<String, double> result = {};
 
   for (var p in parts) {
-    var kv = p.split(":");
+    final kv = p.split(":");
 
     if (kv.length == 2) {
-      result[kv[0].toLowerCase()] = double.parse(kv[1]);
+      final key = kv[0].trim().toLowerCase();
+      final value = double.tryParse(kv[1].trim());
+      if (value != null) {
+        result[key] = value;
+      }
     }
   }
 

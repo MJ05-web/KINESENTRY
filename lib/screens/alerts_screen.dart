@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../services/data_service.dart';
 import '../services/health_rules.dart';
+import '../theme/app_theme.dart';
+import '../widgets/app_chrome.dart';
 
 class AlertsScreen extends StatelessWidget {
   const AlertsScreen({super.key});
@@ -11,11 +13,11 @@ class AlertsScreen extends StatelessWidget {
     final dataService = DataService();
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0F1C),
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: const Text('Alerts'),
-        backgroundColor: const Color(0xFF0A0F1C),
         centerTitle: true,
+        foregroundColor: AppThemeColors.textPrimary(context),
       ),
       body: StreamBuilder<Map<String, double>>(
         stream: dataService.stream,
@@ -23,47 +25,59 @@ class AlertsScreen extends StatelessWidget {
           final latest = dataService.latestData;
           final alerts = HealthRules.evaluate(latest);
 
-          return SingleChildScrollView(
+          return AppChrome(
             padding: const EdgeInsets.all(15),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _statusOverview(latest),
-                const SizedBox(height: 16),
-                _categorySection(
-                  title: 'Critical Alerts',
-                  icon: Icons.priority_high_rounded,
-                  color: Colors.red,
-                  alerts: _byCategory(alerts, HealthRules.categoryCritical),
-                  emptyText: 'No critical vitals or fall alerts',
-                ),
-                const SizedBox(height: 14),
-                _categorySection(
-                  title: 'Warnings',
-                  icon: Icons.warning_amber_rounded,
-                  color: Colors.orange,
-                  alerts: _byCategory(alerts, HealthRules.categoryWarning),
-                  emptyText: 'No warning-level vitals right now',
-                ),
-                const SizedBox(height: 14),
-                _categorySection(
-                  title: 'Gesture Requests',
-                  icon: Icons.pan_tool_outlined,
-                  color: Colors.cyan,
-                  alerts: _byCategory(alerts, HealthRules.categoryGesture),
-                  emptyText: 'No active gesture request',
-                ),
-                const SizedBox(height: 14),
-                _categorySection(
-                  title: 'Battery',
-                  icon: Icons.battery_alert_outlined,
-                  color: Colors.green,
-                  alerts: _byCategory(alerts, HealthRules.categoryBattery),
-                  emptyText: _batteryText(latest),
-                ),
-                const SizedBox(height: 18),
-                _historySection(dataService.alertHistory),
-              ],
+            safeBottom: true,
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const AccentHeadline(
+                    title: 'Alert Center',
+                    subtitle: 'Critical events, requests, and system warnings in one synchronized queue.',
+                  ),
+                  const SizedBox(height: 16),
+                  _statusOverview(context, latest),
+                  const SizedBox(height: 16),
+                  _categorySection(
+                    context: context,
+                    title: 'Critical Alerts',
+                    icon: Icons.priority_high_rounded,
+                    color: Colors.red,
+                    alerts: _byCategory(alerts, HealthRules.categoryCritical),
+                    emptyText: 'No critical vitals or fall alerts',
+                  ),
+                  const SizedBox(height: 14),
+                  _categorySection(
+                    context: context,
+                    title: 'Warnings',
+                    icon: Icons.warning_amber_rounded,
+                    color: Colors.orange,
+                    alerts: _byCategory(alerts, HealthRules.categoryWarning),
+                    emptyText: 'No warning-level vitals right now',
+                  ),
+                  const SizedBox(height: 14),
+                  _categorySection(
+                    context: context,
+                    title: 'Gesture Requests',
+                    icon: Icons.pan_tool_outlined,
+                    color: Colors.cyan,
+                    alerts: _byCategory(alerts, HealthRules.categoryGesture),
+                    emptyText: 'No active gesture request',
+                  ),
+                  const SizedBox(height: 14),
+                  _categorySection(
+                    context: context,
+                    title: 'Battery',
+                    icon: Icons.battery_alert_outlined,
+                    color: Colors.green,
+                    alerts: _byCategory(alerts, HealthRules.categoryBattery),
+                    emptyText: _batteryText(latest),
+                  ),
+                  const SizedBox(height: 18),
+                  _historySection(context, dataService.alertHistory),
+                ],
+              ),
             ),
           );
         },
@@ -71,7 +85,7 @@ class AlertsScreen extends StatelessWidget {
     );
   }
 
-  Widget _statusOverview(Map<String, dynamic>? latest) {
+  Widget _statusOverview(BuildContext context, Map<String, dynamic>? latest) {
     final status = HealthRules.overallStatus(latest);
     final color = status == 'Critical'
         ? Colors.red
@@ -82,14 +96,9 @@ class AlertsScreen extends StatelessWidget {
         ? latest!['time'] as DateTime
         : null;
 
-    return Container(
-      width: double.infinity,
+    return GlassPanel(
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: const Color(0xFF121A2F),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.white10),
-      ),
+      glowColor: color.withValues(alpha: .12),
       child: Row(
         children: [
           Container(
@@ -118,7 +127,9 @@ class AlertsScreen extends StatelessWidget {
                   time == null
                       ? 'Waiting for readings'
                       : 'Updated ${_formatTime(time)}',
-                  style: const TextStyle(color: Colors.white54),
+                  style: TextStyle(
+                    color: AppThemeColors.textSecondary(context),
+                  ),
                 ),
               ],
             ),
@@ -129,20 +140,16 @@ class AlertsScreen extends StatelessWidget {
   }
 
   Widget _categorySection({
+    required BuildContext context,
     required String title,
     required IconData icon,
     required Color color,
     required List<HealthAlert> alerts,
     required String emptyText,
   }) {
-    return Container(
-      width: double.infinity,
+    return GlassPanel(
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: const Color(0xFF121A2F),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.white10),
-      ),
+      glowColor: color.withValues(alpha: .08),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -153,8 +160,8 @@ class AlertsScreen extends StatelessWidget {
               Expanded(
                 child: Text(
                   title,
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: AppThemeColors.textPrimary(context),
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
                   ),
@@ -165,12 +172,13 @@ class AlertsScreen extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           if (alerts.isEmpty)
-            _emptyState(emptyText)
+            _emptyState(context, emptyText)
           else
             Column(
               children: alerts
                   .map(
                     (alert) => _alertTile(
+                      context: context,
                       title: alert.title,
                       detail: alert.detail,
                       color: _severityColor(alert.severity, fallback: color),
@@ -183,29 +191,26 @@ class AlertsScreen extends StatelessWidget {
     );
   }
 
-  Widget _historySection(List<Map<String, dynamic>> history) {
-    return Container(
-      width: double.infinity,
+  Widget _historySection(
+    BuildContext context,
+    List<Map<String, dynamic>> history,
+  ) {
+    return GlassPanel(
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: const Color(0xFF121A2F),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.white10),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'Alert History',
             style: TextStyle(
-              color: Colors.white,
+              color: AppThemeColors.textPrimary(context),
               fontSize: 16,
               fontWeight: FontWeight.bold,
             ),
           ),
           const SizedBox(height: 12),
           if (history.isEmpty)
-            _emptyState('No alerts recorded yet')
+            _emptyState(context, 'No alerts recorded yet')
           else
             Column(
               children: history.map((alert) {
@@ -218,6 +223,7 @@ class AlertsScreen extends StatelessWidget {
                     : DateTime.now();
 
                 return _alertTile(
+                  context: context,
                   title: alert['message'] ?? 'Alert',
                   detail: '${alert['detail'] ?? ''}\n${_formatTime(time)}',
                   color: color,
@@ -230,6 +236,7 @@ class AlertsScreen extends StatelessWidget {
   }
 
   Widget _alertTile({
+    required BuildContext context,
     required String title,
     required String detail,
     required Color color,
@@ -260,7 +267,10 @@ class AlertsScreen extends StatelessWidget {
                   const SizedBox(height: 4),
                   Text(
                     detail,
-                    style: const TextStyle(color: Colors.white70, height: 1.3),
+                    style: TextStyle(
+                      color: AppThemeColors.textSecondary(context),
+                      height: 1.3,
+                    ),
                   ),
                 ],
               ],
@@ -271,16 +281,19 @@ class AlertsScreen extends StatelessWidget {
     );
   }
 
-  Widget _emptyState(String text) {
+  Widget _emptyState(BuildContext context, String text) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFF0A0F1C),
+        color: AppThemeColors.panelAlt(context),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.white10),
+        border: Border.all(color: AppThemeColors.border(context)),
       ),
-      child: Text(text, style: const TextStyle(color: Colors.white54)),
+      child: Text(
+        text,
+        style: TextStyle(color: AppThemeColors.textSecondary(context)),
+      ),
     );
   }
 

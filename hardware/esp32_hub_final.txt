@@ -1,0 +1,1074 @@
+#include <esp_now.h>
+#include <WiFi.h>
+#include <Wire.h>
+#include <esp_sleep.h>
+#include <U8g2lib.h>
+
+#include <BLEDevice.h>
+#include <BLEUtils.h>
+#include <BLEServer.h>
+#include <BLE2902.h>
+
+// =====================================================
+//                    OLED SH1106
+// =====================================================
+U8G2_SH1106_128X64_NONAME_F_HW_I2C u8g2(
+  U8G2_R0,
+  U8X8_PIN_NONE
+);
+
+// =====================================================
+//                      BLE UUIDS
+// =====================================================
+static const char* SERVICE_UUID =
+  "8b9b9770-14f2-4f98-b4d7-2fa29f7f1001";
+
+static const char* NOTIFY_UUID =
+  "8b9b9770-14f2-4f98-b4d7-2fa29f7f1002";
+
+static const char* WRITE_UUID =
+  "8b9b9770-14f2-4f98-b4d7-2fa29f7f1003";
+
+// =====================================================
+//                    BLE OBJECTS
+// =====================================================
+BLEServer* bleServer = nullptr;
+BLECharacteristic* notifyCharacteristic = nullptr;
+
+bool bleClientConnected = false;
+
+// =====================================================
+//                       PINS
+// =====================================================
+const int bluetoothButton = 19;
+const int bluetoothLed    = 2;
+
+const int connectionLed   = 23;
+const int gestureLed      = 15;
+const int fallLed         = 4;
+
+const int hubBuzzer       = 25;
+
+// =====================================================
+//                    DATA STRUCTURES
+// =====================================================
+typedef struct struct_message {
+  int bpm;
+  int spo2;
+  float temp;
+  int gesture;
+  bool fall;
+  int battery;
+} struct_message;
+
+typedef struct control_message {
+  uint8_t kind;
+  uint8_t deepSleepEnabled;
+} control_message;
+
+struct_message incomingData = {
+  0, 0, 0.0f, 0, false, 85
+};
+
+control_message gloveControl = {
+  0xA1,
+  0
+};
+
+// =====================================================
+//                    RTC VARIABLES
+// =====================================================
+RTC_DATA_ATTR uint8_t rtcDeepSleepEnabled = 0;
+
+// =====================================================
+//                 GLOVE PEER MANAGEMENT
+// =====================================================
+uint8_t gloveAddress[6] = {0};
+
+bool gloveAddressKnown = false;
+
+// =====================================================
+//                     TIMERS
+// =====================================================
+unsigned long connectionLedTimer = 0;
+bool connectionLedState = false;
+
+unsigned long gestureLedTimer = 0;
+bool gestureLedActive = false;
+
+unsigned long fallLedTimer = 0;
+bool fallLedActive = false;
+
+unsigned long lastDataReceivedTime = 0;
+
+unsigned long lastBleNotifyTime = 0;
+
+unsigned long buttonPressStart = 0;
+
+unsigned long lastBatteryAlert = 0;
+
+unsigned long appLogoutBannerUntil = 0;
+
+// =====================================================
+//                     STATES
+// =====================================================
+bool buttonHandled = false;
+
+bool speakerRequestActive = false;
+
+bool speakerConnectedAck = false;
+
+bool deepSleepEnabled = false;
+
+bool appLogoutBannerActive = false;
+
+// =====================================================
+//               BATTERY SMOOTHING
+// =====================================================
+float smoothedBattery = 85.0f;
+
+// =====================================================
+//                    CONSTANTS
+// =====================================================
+const unsigned long speakerHoldMs      = 3000;
+const unsigned long batteryCooldownMs  = 30000;
+const unsigned long hubIdleSleepMs     = 20000;
+
+// =====================================================
+//                  GESTURE LABELS
+// =====================================================
+const char* gestureLabel(int gesture) {
+
+  switch (gesture) {
+
+    case 1:
+      return "WATER";
+
+    case 2:
+      return "BATHROOM";
+
+    case 3:
+      return "FOOD";
+
+    default:
+      return "STABLE";
+  }
+}
+
+// =====================================================
+//                  BATTERY DRAW
+// =====================================================
+void drawBattery(int x,
+                 int y,
+                 int level) {
+
+  u8g2.drawFrame(x, y, 20, 10);
+
+  u8g2.drawBox(x + 20,
+               y + 3,
+               2,
+               4);
+
+  int fill = map(level,
+                 0,
+                 100,
+                 0,
+                 18);
+
+  u8g2.drawBox(x + 1,
+               y + 1,
+               fill,
+               8);
+}
+
+// =====================================================
+//              STARTUP SCREEN
+// =====================================================
+void showStartupScreen() {
+
+  u8g2.clearBuffer();
+
+  u8g2.setFont(
+    u8g2_font_ncenB08_tr
+  );
+
+  u8g2.drawStr(8,
+               28,
+               "KINESENTRY");
+
+  u8g2.drawStr(40,
+               50,
+               "HUB");
+
+  u8g2.sendBuffer();
+
+  delay(1500);
+}
+
+// =====================================================
+//                 SLEEP SCREEN
+// =====================================================
+void showSleepScreen() {
+
+  u8g2.clearBuffer();
+
+  u8g2.setFont(
+    u8g2_font_ncenB08_tr
+  );
+
+  u8g2.drawStr(22,
+               24,
+               "SLEEP");
+
+  u8g2.setFont(
+    u8g2_font_6x12_tr
+  );
+
+  u8g2.drawStr(10,
+               44,
+               "Hub Power Save");
+
+  u8g2.sendBuffer();
+}
+
+// =====================================================
+//               SEND CONTROL TO GLOVE
+// =====================================================
+void sendControlToGlove() {
+
+  if (!gloveAddressKnown)
+    return;
+
+  esp_now_send(
+    gloveAddress,
+    (uint8_t*)&gloveControl,
+    sizeof(gloveControl)
+  );
+}
+
+// =====================================================
+//                  BLE CALLBACKS
+// =====================================================
+class AppServerCallbacks :
+  public BLEServerCallbacks {
+
+  void onConnect(BLEServer* server) {
+
+    bleClientConnected = true;
+  }
+
+  void onDisconnect(BLEServer* server) {
+
+    bleClientConnected = false;
+
+    BLEDevice::startAdvertising();
+  }
+};
+
+// =====================================================
+//                 BLE WRITE CALLBACK
+// =====================================================
+class AppWriteCallbacks :
+  public BLECharacteristicCallbacks {
+
+  void onWrite(
+    BLECharacteristic* characteristic
+  ) override {
+
+    String value =
+      characteristic->getValue().c_str();
+
+    value.trim();
+
+    // ---------------- SPEAKER ----------------
+    if (value == "SPEAKER_ACK:1") {
+
+      speakerConnectedAck = true;
+
+      speakerRequestActive = true;
+    }
+
+    else if (value == "SPEAKER_ACK:0") {
+
+      speakerConnectedAck = false;
+    }
+
+    else if (value == "SPEAKER_OFF") {
+
+      speakerConnectedAck = false;
+
+      speakerRequestActive = false;
+    }
+
+    // ---------------- DEEP SLEEP ----------------
+    else if (value == "SLEEP_MODE:1") {
+
+      deepSleepEnabled = true;
+
+      rtcDeepSleepEnabled = 1;
+
+      gloveControl.deepSleepEnabled = 1;
+
+      sendControlToGlove();
+    }
+
+    else if (value == "SLEEP_MODE:0") {
+
+      deepSleepEnabled = false;
+
+      rtcDeepSleepEnabled = 0;
+
+      gloveControl.deepSleepEnabled = 0;
+
+      sendControlToGlove();
+    }
+
+    // ---------------- APP LOGOUT ----------------
+    else if (value == "APP_LOGOUT:1") {
+
+      appLogoutBannerActive = true;
+
+      appLogoutBannerUntil =
+        millis() + 3500;
+
+      speakerConnectedAck = false;
+
+      speakerRequestActive = false;
+    }
+  }
+};
+
+// =====================================================
+//                    BLE INIT
+// =====================================================
+void initBle() {
+
+  BLEDevice::init("KINESENTRY_HUB");
+
+  bleServer =
+    BLEDevice::createServer();
+
+  bleServer->setCallbacks(
+    new AppServerCallbacks()
+  );
+
+  BLEService* service =
+    bleServer->createService(
+      SERVICE_UUID
+    );
+
+  // ------------ NOTIFY CHARACTERISTIC ------------
+  notifyCharacteristic =
+    service->createCharacteristic(
+      NOTIFY_UUID,
+      BLECharacteristic::PROPERTY_NOTIFY
+    );
+
+  notifyCharacteristic->addDescriptor(
+    new BLE2902()
+  );
+
+  // ------------ WRITE CHARACTERISTIC ------------
+  BLECharacteristic* writeCharacteristic =
+    service->createCharacteristic(
+      WRITE_UUID,
+      BLECharacteristic::PROPERTY_WRITE |
+      BLECharacteristic::PROPERTY_WRITE_NR
+    );
+
+  writeCharacteristic->setCallbacks(
+    new AppWriteCallbacks()
+  );
+
+  service->start();
+
+  BLEAdvertising* advertising =
+    BLEDevice::getAdvertising();
+
+  advertising->addServiceUUID(
+    SERVICE_UUID
+  );
+
+  advertising->setScanResponse(true);
+
+  BLEDevice::startAdvertising();
+}
+
+// =====================================================
+//                 NOTIFY APP
+// =====================================================
+void notifyApp() {
+
+  if (!bleClientConnected ||
+      notifyCharacteristic == nullptr)
+    return;
+
+  char payload[180];
+
+  snprintf(
+    payload,
+    sizeof(payload),
+    "bpm:%d,spo2:%d,temp:%.1f,gesture:%d,fall:%d,battery:%d,speaker:%d,sleep:%d",
+
+    incomingData.bpm,
+    incomingData.spo2,
+    incomingData.temp,
+    incomingData.gesture,
+
+    incomingData.fall ? 1 : 0,
+
+    incomingData.battery,
+
+    speakerConnectedAck ? 1 : 0,
+
+    deepSleepEnabled ? 1 : 0
+  );
+
+  notifyCharacteristic->setValue(
+    (uint8_t*)payload,
+    strlen(payload)
+  );
+
+  notifyCharacteristic->notify();
+}
+
+// =====================================================
+//                 BATTERY ALERT
+// =====================================================
+void handleBatteryAlert() {
+
+  if (incomingData.battery >= 30)
+    return;
+
+  if (millis() -
+      lastBatteryAlert <
+      batteryCooldownMs)
+    return;
+
+  lastBatteryAlert = millis();
+
+  for (int i = 0; i < 5; i++) {
+
+    tone(hubBuzzer,
+         650);
+
+    delay(120);
+
+    noTone(hubBuzzer);
+
+    delay(100);
+  }
+}
+
+// =====================================================
+//              BATTERY SMOOTHING
+// =====================================================
+int stabilizeBattery(int sample) {
+
+  smoothedBattery =
+    (smoothedBattery * 0.8f) +
+    (sample * 0.2f);
+
+  return constrain(
+    (int)(smoothedBattery + 0.5f),
+    0,
+    100
+  );
+}
+
+// =====================================================
+//               ENSURE GLOVE PEER
+// =====================================================
+void ensureGlovePeer(
+  const uint8_t* address
+) {
+
+  if (gloveAddressKnown &&
+      memcmp(gloveAddress,
+             address,
+             6) == 0)
+    return;
+
+  memcpy(gloveAddress,
+         address,
+         6);
+
+  gloveAddressKnown = true;
+
+  esp_now_peer_info_t peerInfo = {};
+
+  memcpy(peerInfo.peer_addr,
+         gloveAddress,
+         6);
+
+  peerInfo.channel = 0;
+
+  peerInfo.encrypt = false;
+
+  esp_now_del_peer(gloveAddress);
+
+  esp_now_add_peer(&peerInfo);
+}
+
+// =====================================================
+//               ESPNOW RECEIVE
+// =====================================================
+void onDataRecv(
+  const esp_now_recv_info* info,
+  const uint8_t* incomingDataBytes,
+  int len
+) {
+
+  if (len != sizeof(struct_message))
+    return;
+
+  ensureGlovePeer(
+    info->src_addr
+  );
+
+  memcpy(&incomingData,
+         incomingDataBytes,
+         sizeof(incomingData));
+
+  incomingData.battery =
+    stabilizeBattery(
+      incomingData.battery
+    );
+
+  lastDataReceivedTime = millis();
+
+  // -------- SEND SLEEP STATE TO GLOVE --------
+  gloveControl.deepSleepEnabled =
+    deepSleepEnabled ? 1 : 0;
+
+  sendControlToGlove();
+
+  // -------- GESTURE ALERT --------
+  if (incomingData.gesture > 0) {
+
+    digitalWrite(gestureLed,
+                 HIGH);
+
+    gestureLedActive = true;
+
+    gestureLedTimer = millis();
+
+    tone(hubBuzzer,
+         1200,
+         200);
+  }
+
+  // -------- FALL ALERT --------
+  if (incomingData.fall) {
+
+    digitalWrite(fallLed,
+                 HIGH);
+
+    fallLedActive = true;
+
+    fallLedTimer = millis();
+
+    tone(hubBuzzer,
+         700);
+  }
+
+  handleBatteryAlert();
+
+  notifyApp();
+}
+
+// =====================================================
+//                   OLED RENDER
+// =====================================================
+void renderScreen() {
+
+  u8g2.clearBuffer();
+
+  u8g2.setFont(
+    u8g2_font_6x12_tr
+  );
+
+  u8g2.drawStr(0,
+               10,
+               "KINESENTRY HUB");
+
+  u8g2.drawLine(0,
+                12,
+                128,
+                12);
+
+  // ---------------- BATTERY ----------------
+  drawBattery(
+    104,
+    0,
+    incomingData.battery
+  );
+
+  u8g2.setFont(
+    u8g2_font_5x7_tr
+  );
+
+  u8g2.drawStr(88,
+               20,
+               "Glove Batt");
+
+  u8g2.setFont(
+    u8g2_font_6x12_tr
+  );
+
+  // ---------------- CONNECTION ----------------
+  if (millis() -
+      lastDataReceivedTime <= 3000) {
+
+    u8g2.drawStr(
+      0,
+      24,
+      "Glove: Connected"
+    );
+  }
+
+  else {
+
+    u8g2.drawStr(
+      0,
+      24,
+      "Glove: Disconnected"
+    );
+  }
+
+  // ---------------- BPM ----------------
+  char bpmText[20];
+
+  sprintf(bpmText,
+          "BPM: %d",
+          incomingData.bpm);
+
+  u8g2.drawStr(
+    0,
+    36,
+    bpmText
+  );
+
+  // ---------------- SPO2 ----------------
+  char spo2Text[20];
+
+  sprintf(spo2Text,
+          "SpO2: %d%%",
+          incomingData.spo2);
+
+  u8g2.drawStr(
+    70,
+    36,
+    spo2Text
+  );
+
+  // ---------------- TEMP ----------------
+  char tempText[20];
+
+  sprintf(tempText,
+          "Temp: %.1f C",
+          incomingData.temp);
+
+  u8g2.drawStr(
+    0,
+    48,
+    tempText
+  );
+
+  // ---------------- STATUS ----------------
+  if (appLogoutBannerActive &&
+      millis() < appLogoutBannerUntil) {
+
+    u8g2.drawStr(
+      0,
+      63,
+      "App Logged Out"
+    );
+  }
+
+  else if (incomingData.fall &&
+           fallLedActive) {
+
+    u8g2.setFont(
+      u8g2_font_7x14B_tr
+    );
+
+    u8g2.drawStr(
+      0,
+      63,
+      "FALL ALERT!"
+    );
+  }
+
+  else {
+
+    u8g2.setFont(
+      u8g2_font_6x12_tr
+    );
+
+    if (incomingData.gesture == 1) {
+
+      u8g2.drawStr(
+        0,
+        63,
+        "Gesture: WATER"
+      );
+    }
+
+    else if (incomingData.gesture == 2) {
+
+      u8g2.drawStr(
+        0,
+        63,
+        "Gesture: BATHROOM"
+      );
+    }
+
+    else if (incomingData.gesture == 3) {
+
+      u8g2.drawStr(
+        0,
+        63,
+        "Gesture: FOOD"
+      );
+    }
+
+    else if (speakerConnectedAck) {
+
+      u8g2.drawStr(
+        0,
+        63,
+        "Speaker Connected"
+      );
+    }
+
+    else if (speakerRequestActive) {
+
+      u8g2.drawStr(
+        0,
+        63,
+        "Speaker Pairing"
+      );
+    }
+
+    else if (deepSleepEnabled) {
+
+      u8g2.drawStr(
+        0,
+        63,
+        "Sleep Mode Armed"
+      );
+    }
+
+    else {
+
+      u8g2.drawStr(
+        0,
+        63,
+        "Status: Stable"
+      );
+    }
+  }
+
+  u8g2.sendBuffer();
+}
+
+// =====================================================
+//              SPEAKER BUTTON
+// =====================================================
+void updateSpeakerButtonState() {
+
+  bool pressed =
+    digitalRead(
+      bluetoothButton
+    ) == LOW;
+
+  if (pressed &&
+      buttonPressStart == 0) {
+
+    buttonPressStart = millis();
+
+    buttonHandled = false;
+  }
+
+  if (!pressed) {
+
+    buttonPressStart = 0;
+
+    buttonHandled = false;
+  }
+
+  if (pressed &&
+      !buttonHandled &&
+      buttonPressStart > 0 &&
+      millis() -
+      buttonPressStart >=
+      speakerHoldMs) {
+
+    buttonHandled = true;
+
+    if (!speakerRequestActive) {
+
+      speakerRequestActive = true;
+
+      speakerConnectedAck = false;
+
+      tone(hubBuzzer,
+           1400,
+           220);
+    }
+
+    else {
+
+      speakerRequestActive = false;
+
+      speakerConnectedAck = false;
+
+      tone(hubBuzzer,
+           700,
+           180);
+
+      notifyApp();
+    }
+  }
+}
+
+// =====================================================
+//               BLUETOOTH LED
+// =====================================================
+void updateBluetoothLed() {
+
+  if (!speakerRequestActive) {
+
+    digitalWrite(
+      bluetoothLed,
+      LOW
+    );
+
+    return;
+  }
+
+  if (speakerConnectedAck) {
+
+    digitalWrite(
+      bluetoothLed,
+      HIGH
+    );
+
+    return;
+  }
+
+  bool blink =
+    ((millis() / 250) % 2) == 0;
+
+  digitalWrite(
+    bluetoothLed,
+    blink ? HIGH : LOW
+  );
+}
+
+// =====================================================
+//               CONNECTION LED
+// =====================================================
+void updateConnectionLed() {
+
+  if (millis() -
+      lastDataReceivedTime <= 3000) {
+
+    if (millis() -
+        connectionLedTimer >= 1000) {
+
+      connectionLedTimer =
+        millis();
+
+      connectionLedState =
+        !connectionLedState;
+
+      digitalWrite(
+        connectionLed,
+        connectionLedState
+      );
+    }
+  }
+
+  else {
+
+    digitalWrite(
+      connectionLed,
+      LOW
+    );
+  }
+}
+
+// =====================================================
+//                 HUB DEEP SLEEP
+// =====================================================
+void maybeEnterIdleDeepSleep() {
+
+  if (!deepSleepEnabled)
+    return;
+
+  if (bleClientConnected)
+    return;
+
+  if (speakerRequestActive)
+    return;
+
+  if (millis() -
+      lastDataReceivedTime <=
+      hubIdleSleepMs)
+    return;
+
+  showSleepScreen();
+
+  delay(150);
+
+  esp_sleep_enable_timer_wakeup(
+    8ULL * 1000000ULL
+  );
+
+  esp_deep_sleep_start();
+}
+
+// =====================================================
+//                      SETUP
+// =====================================================
+void setup() {
+
+  Serial.begin(115200);
+
+  pinMode(bluetoothButton,
+          INPUT_PULLUP);
+
+  pinMode(bluetoothLed,
+          OUTPUT);
+
+  pinMode(connectionLed,
+          OUTPUT);
+
+  pinMode(gestureLed,
+          OUTPUT);
+
+  pinMode(fallLed,
+          OUTPUT);
+
+  pinMode(hubBuzzer,
+          OUTPUT);
+
+  digitalWrite(bluetoothLed,
+               LOW);
+
+  digitalWrite(connectionLed,
+               LOW);
+
+  digitalWrite(gestureLed,
+               LOW);
+
+  digitalWrite(fallLed,
+               LOW);
+
+  // ---------------- OLED ----------------
+  Wire.begin(21, 22);
+
+  u8g2.begin();
+
+  // ---------------- SLEEP STATE ----------------
+  deepSleepEnabled =
+    rtcDeepSleepEnabled == 1;
+
+  gloveControl.deepSleepEnabled =
+    deepSleepEnabled ? 1 : 0;
+
+  // ---------------- START SCREEN ----------------
+  showStartupScreen();
+
+  // ---------------- WIFI + ESPNOW ----------------
+  WiFi.mode(WIFI_STA);
+
+  if (esp_now_init() != ESP_OK) {
+
+    while (true) {
+
+      tone(hubBuzzer,
+           220,
+           200);
+
+      delay(450);
+    }
+  }
+
+  esp_now_register_recv_cb(
+    onDataRecv
+  );
+
+  // ---------------- BLE ----------------
+  initBle();
+
+  tone(hubBuzzer,
+       1000,
+       200);
+}
+
+// =====================================================
+//                       LOOP
+// =====================================================
+void loop() {
+
+  updateSpeakerButtonState();
+
+  updateBluetoothLed();
+
+  updateConnectionLed();
+
+  // ---------------- GESTURE LED OFF ----------------
+  if (gestureLedActive &&
+      millis() -
+      gestureLedTimer >= 1000) {
+
+    digitalWrite(
+      gestureLed,
+      LOW
+    );
+
+    gestureLedActive = false;
+  }
+
+  // ---------------- FALL ALERT OFF ----------------
+  if (fallLedActive &&
+      millis() -
+      fallLedTimer >= 5000) {
+
+    digitalWrite(
+      fallLed,
+      LOW
+    );
+
+    noTone(hubBuzzer);
+
+    fallLedActive = false;
+  }
+
+  // ---------------- LOGOUT BANNER ----------------
+  if (appLogoutBannerActive &&
+      millis() >=
+      appLogoutBannerUntil) {
+
+    appLogoutBannerActive = false;
+  }
+
+  // ---------------- PERIODIC BLE UPDATE ----------------
+  if (bleClientConnected &&
+      millis() -
+      lastBleNotifyTime >= 1000) {
+
+    notifyApp();
+
+    lastBleNotifyTime = millis();
+  }
+
+  renderScreen();
+
+  maybeEnterIdleDeepSleep();
+
+  delay(80);
+}

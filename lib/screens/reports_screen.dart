@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 
 import '../models/health_data.dart';
 import '../services/data_service.dart';
+import '../services/ml_insight_service.dart';
 import '../services/pdf_service.dart';
 import '../services/report_storage_service.dart';
+import '../theme/app_theme.dart';
+import '../widgets/app_chrome.dart';
 import '../widgets/mini_graph.dart';
 
 class ReportsScreen extends StatefulWidget {
@@ -85,18 +88,24 @@ class _ReportsScreenState extends State<ReportsScreen> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          backgroundColor: const Color(0xFF121A2F),
+          backgroundColor: AppThemeColors.panel(context),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          title: const Text(
+          title: Text(
             'Delete report?',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            style: TextStyle(
+              color: AppThemeColors.textPrimary(context),
+              fontWeight: FontWeight.bold,
+            ),
           ),
           content: Text(
             'Are you sure you want to delete "${report.title}"?\n\n'
             'Stored in: Firebase Firestore\n'
             'Path: users/{uid}/reports/${report.id}\n\n'
             'This removes it from this app and Firebase.',
-            style: const TextStyle(color: Colors.white70, height: 1.35),
+            style: TextStyle(
+              color: AppThemeColors.textSecondary(context),
+              height: 1.35,
+            ),
           ),
           actions: [
             TextButton(
@@ -176,96 +185,106 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final session = dataService.sessionData;
+    final recordedHistory = dataService.recordedVitalHistory;
+    final ml = MlInsightService.analyze(recordedHistory);
+    final session = dataService.recordedSessionData;
     final sessionInsight = generateInsights(session);
 
-    final hourly = getHourlyData(dataService.history);
+    final hourly = getHourlyData(recordedHistory);
     final hourlyInsight = generateInsights(hourly);
 
-    final daily = getDailyData(dataService.history);
+    final daily = getDailyData(recordedHistory);
     final dailyInsight = generateInsights(daily);
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0F1C),
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: const Text('Reports'),
-        backgroundColor: const Color(0xFF0A0F1C),
         centerTitle: true,
+        foregroundColor: AppThemeColors.textPrimary(context),
       ),
-      body: SingleChildScrollView(
+      body: AppChrome(
         padding: const EdgeInsets.all(15),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Current Status',
-              style: TextStyle(color: Colors.white, fontSize: 18),
-            ),
-            const SizedBox(height: 10),
-            buildStatusCard(dataService),
-            const SizedBox(height: 20),
-            buildReportSection(
-              title: 'Session Report',
-              subtitle: 'Current monitoring session',
-              icon: Icons.timer_outlined,
-              accentColor: Colors.cyan,
-              data: session,
-              insight: sessionInsight,
-              isSaving: savingSession,
-              onSave: () {
-                _saveReport(
-                  title: 'Session Health Report',
-                  type: 'session',
-                  data: session,
-                  insight: sessionInsight,
-                );
-              },
-            ),
-            const SizedBox(height: 20),
-            buildReportSection(
-              title: 'Hourly Report',
-              subtitle: 'Last 60 minutes',
-              icon: Icons.schedule,
-              accentColor: Colors.blue,
-              data: hourly,
-              insight: hourlyInsight,
-              isSaving: savingHourly,
-              onSave: () {
-                _saveReport(
-                  title: 'Hourly Health Report',
-                  type: 'hourly',
-                  data: hourly,
-                  insight: hourlyInsight,
-                );
-              },
-            ),
-            const SizedBox(height: 20),
-            buildReportSection(
-              title: 'Daily Report',
-              subtitle: 'Today from midnight',
-              icon: Icons.today_outlined,
-              accentColor: Colors.green,
-              data: daily,
-              insight: dailyInsight,
-              isSaving: savingDaily,
-              onSave: () {
-                _saveReport(
-                  title: 'Daily Health Report',
-                  type: 'daily',
-                  data: daily,
-                  insight: dailyInsight,
-                );
-              },
-            ),
-            const SizedBox(height: 24),
-            const Text(
-              'Previous Reports',
-              style: TextStyle(color: Colors.white, fontSize: 18),
-            ),
-            const SizedBox(height: 10),
-            buildPreviousReports(),
-            const SizedBox(height: 20),
-          ],
+        safeBottom: true,
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const AccentHeadline(
+                title: 'Health Reports',
+                subtitle: 'Save cleaner summaries, trends, and ML snapshots with the new visual report flow.',
+              ),
+              const SizedBox(height: 14),
+              buildStatusCard(dataService),
+              const SizedBox(height: 14),
+              _mlCard(ml),
+              const SizedBox(height: 20),
+              buildReportSection(
+                title: 'Session Report',
+                subtitle: 'Current monitoring session',
+                icon: Icons.timer_outlined,
+                accentColor: Colors.cyan,
+                data: session,
+                insight: sessionInsight,
+                isSaving: savingSession,
+                onSave: () {
+                  _saveReport(
+                    title: 'Session Health Report',
+                    type: 'session',
+                    data: session,
+                    insight: sessionInsight,
+                  );
+                },
+              ),
+              const SizedBox(height: 20),
+              buildReportSection(
+                title: 'Hourly Report',
+                subtitle: 'Last 60 minutes',
+                icon: Icons.schedule,
+                accentColor: Colors.blue,
+                data: hourly,
+                insight: hourlyInsight,
+                isSaving: savingHourly,
+                onSave: () {
+                  _saveReport(
+                    title: 'Hourly Health Report',
+                    type: 'hourly',
+                    data: hourly,
+                    insight: hourlyInsight,
+                  );
+                },
+              ),
+              const SizedBox(height: 20),
+              buildReportSection(
+                title: 'Daily Report',
+                subtitle: 'Today from midnight',
+                icon: Icons.today_outlined,
+                accentColor: Colors.green,
+                data: daily,
+                insight: dailyInsight,
+                isSaving: savingDaily,
+                onSave: () {
+                  _saveReport(
+                    title: 'Daily Health Report',
+                    type: 'daily',
+                    data: daily,
+                    insight: dailyInsight,
+                  );
+                },
+              ),
+              const SizedBox(height: 24),
+              Text(
+                'Previous Reports',
+                style: TextStyle(
+                  color: AppThemeColors.textPrimary(context),
+                  fontSize: 18,
+                ),
+              ),
+              const SizedBox(height: 10),
+              buildPreviousReports(),
+              const SizedBox(height: 20),
+            ],
+          ),
         ),
       ),
     );
@@ -276,18 +295,14 @@ class _ReportsScreenState extends State<ReportsScreen> {
         ? dataService.history.last
         : null;
 
-    return Container(
-      width: double.infinity,
+    return GlassPanel(
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: const Color(0xFF121A2F),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.white10),
-      ),
       child: last == null
-          ? const Text(
+          ? Text(
               'Waiting for device data...',
-              style: TextStyle(color: Colors.white70),
+              style: TextStyle(
+                color: AppThemeColors.textSecondary(context),
+              ),
             )
           : Row(
               children: [
@@ -330,13 +345,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
     required bool isSaving,
     required VoidCallback onSave,
   }) {
-    return Container(
+    return GlassPanel(
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: const Color(0xFF121A2F),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.white10),
-      ),
+      glowColor: accentColor.withValues(alpha: .10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -358,15 +369,17 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   children: [
                     Text(
                       title,
-                      style: const TextStyle(
-                        color: Colors.white,
+                      style: TextStyle(
+                        color: AppThemeColors.textPrimary(context),
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
                     Text(
                       subtitle,
-                      style: const TextStyle(color: Colors.white54),
+                      style: TextStyle(
+                        color: AppThemeColors.textSecondary(context),
+                      ),
                     ),
                   ],
                 ),
@@ -441,12 +454,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
+      child: GlassPanel(
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xFF121A2F),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.white10),
-      ),
       child: Row(
         children: [
           Icon(_reportIcon(report.type), color: _reportColor(report.type)),
@@ -457,8 +466,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
               children: [
                 Text(
                   report.title,
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: AppThemeColors.textPrimary(context),
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -473,7 +482,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 const SizedBox(height: 4),
                 Text(
                   '${_formatDate(report.createdAt)}  •  ${report.entryCount} entries',
-                  style: const TextStyle(color: Colors.white54, fontSize: 12),
+                  style: TextStyle(
+                    color: AppThemeColors.textSecondary(context),
+                    fontSize: 12,
+                  ),
                 ),
               ],
             ),
@@ -488,9 +500,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
             IconButton(
               tooltip: 'View report',
               onPressed: () => _viewPreviousReport(report),
-              icon: const Icon(
+              icon: Icon(
                 Icons.visibility_outlined,
-                color: Colors.white70,
+                color: AppThemeColors.textSecondary(context),
               ),
             ),
             IconButton(
@@ -505,19 +517,17 @@ class _ReportsScreenState extends State<ReportsScreen> {
             ),
           ],
         ],
-      ),
+      )),
     );
   }
 
   Widget buildMessageCard(String message) {
-    return Container(
-      width: double.infinity,
+    return GlassPanel(
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xFF121A2F),
-        borderRadius: BorderRadius.circular(8),
+      child: Text(
+        message,
+        style: TextStyle(color: AppThemeColors.textSecondary(context)),
       ),
-      child: Text(message, style: const TextStyle(color: Colors.white54)),
     );
   }
 
@@ -566,7 +576,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
           ],
         ),
         const SizedBox(height: 14),
-        const Text('Heart Rate', style: TextStyle(color: Colors.white54)),
+        Text(
+          'Heart Rate',
+          style: TextStyle(color: AppThemeColors.textSecondary(context)),
+        ),
         SizedBox(
           height: 120,
           child: MiniGraph(
@@ -576,7 +589,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
           ),
         ),
         const SizedBox(height: 10),
-        const Text('SpO2', style: TextStyle(color: Colors.white54)),
+        Text(
+          'SpO2',
+          style: TextStyle(color: AppThemeColors.textSecondary(context)),
+        ),
         SizedBox(
           height: 120,
           child: MiniGraph(
@@ -586,7 +602,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
           ),
         ),
         const SizedBox(height: 10),
-        const Text('Temperature', style: TextStyle(color: Colors.white54)),
+        Text(
+          'Temperature',
+          style: TextStyle(color: AppThemeColors.textSecondary(context)),
+        ),
         SizedBox(
           height: 120,
           child: MiniGraph(
@@ -600,16 +619,70 @@ class _ReportsScreenState extends State<ReportsScreen> {
           width: double.infinity,
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: const Color(0xFF0A0F1C),
+            color: AppThemeColors.panelAlt(context),
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Colors.white10),
+            border: Border.all(color: AppThemeColors.border(context)),
           ),
           child: Text(
             'Insights\n$insight',
-            style: const TextStyle(color: Colors.white70, height: 1.35),
+            style: TextStyle(
+              color: AppThemeColors.textSecondary(context),
+              height: 1.35,
+            ),
           ),
         ),
       ],
+    );
+  }
+
+  Widget _mlCard(MlInsightResult ml) {
+    final color = ml.riskScore >= 70
+        ? AppThemeColors.danger(context)
+        : ml.riskScore >= 35
+        ? AppThemeColors.warning(context)
+        : AppThemeColors.success(context);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppThemeColors.panel(context),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppThemeColors.border(context)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            height: 42,
+            width: 42,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: .14),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(Icons.psychology_alt_outlined, color: color),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'ML Summary  |  ${ml.riskLabel}',
+                  style: TextStyle(color: color, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  ml.summary,
+                  style: TextStyle(
+                    color: AppThemeColors.textSecondary(context),
+                    height: 1.3,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -621,14 +694,17 @@ class _ReportsScreenState extends State<ReportsScreen> {
         const SizedBox(height: 6),
         Text(
           value,
-          style: const TextStyle(
-            color: Colors.white,
+          style: TextStyle(
+            color: AppThemeColors.textPrimary(context),
             fontWeight: FontWeight.bold,
           ),
         ),
         Text(
           label,
-          style: const TextStyle(color: Colors.white54, fontSize: 12),
+          style: TextStyle(
+            color: AppThemeColors.textSecondary(context),
+            fontSize: 12,
+          ),
         ),
       ],
     );
@@ -638,13 +714,16 @@ class _ReportsScreenState extends State<ReportsScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: const Color(0xFF0A0F1C),
+        color: AppThemeColors.panelAlt(context),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.white10),
+        border: Border.all(color: AppThemeColors.border(context)),
       ),
       child: Text(
         text,
-        style: const TextStyle(color: Colors.white70, fontSize: 12),
+        style: TextStyle(
+          color: AppThemeColors.textSecondary(context),
+          fontSize: 12,
+        ),
       ),
     );
   }
@@ -653,16 +732,19 @@ class _ReportsScreenState extends State<ReportsScreen> {
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: const Color(0xFF0A0F1C),
+        color: AppThemeColors.panelAlt(context),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.white10),
+        border: Border.all(color: AppThemeColors.border(context)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             label,
-            style: const TextStyle(color: Colors.white54, fontSize: 11),
+            style: TextStyle(
+              color: AppThemeColors.textSecondary(context),
+              fontSize: 11,
+            ),
           ),
           const SizedBox(height: 4),
           Text(

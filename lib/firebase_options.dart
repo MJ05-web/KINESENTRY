@@ -4,6 +4,14 @@ import 'package:firebase_core/firebase_core.dart' show FirebaseOptions;
 import 'package:flutter/foundation.dart'
     show defaultTargetPlatform, kIsWeb, TargetPlatform;
 
+/// Sanitized placeholder config for GitHub upload.
+///
+/// Before running the app again, replace this file by either:
+/// 1. running `flutterfire configure`
+/// 2. or pasting back your real Firebase values
+///
+/// None of the values below are real project credentials.
+
 /// Default [FirebaseOptions] for use with your Firebase apps.
 ///
 /// Example:
@@ -41,48 +49,48 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyCavQSnikdB0hrns5Sz3sE6KQjeS4UAAB0',
-    appId: '1:982090943295:web:d4c335a3d878563c06218a',
-    messagingSenderId: '982090943295',
-    projectId: 'kinesentry-77c9a',
-    authDomain: 'kinesentry-77c9a.firebaseapp.com',
-    storageBucket: 'kinesentry-77c9a.firebasestorage.app',
-    measurementId: 'G-9VMW5ZFQ3X',
+    apiKey: 'YOUR_WEB_API_KEY',
+    appId: 'YOUR_WEB_APP_ID',
+    messagingSenderId: 'YOUR_MESSAGING_SENDER_ID',
+    projectId: 'YOUR_FIREBASE_PROJECT_ID',
+    authDomain: 'YOUR_PROJECT.firebaseapp.com',
+    storageBucket: 'YOUR_PROJECT.firebasestorage.app',
+    measurementId: 'YOUR_MEASUREMENT_ID',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyDZllG6TT1hOUjuKWcgR5UEp9G4tdLXSyo',
-    appId: '1:982090943295:android:f6bc5803dcbbc58206218a',
-    messagingSenderId: '982090943295',
-    projectId: 'kinesentry-77c9a',
-    storageBucket: 'kinesentry-77c9a.firebasestorage.app',
+    apiKey: 'YOUR_ANDROID_API_KEY',
+    appId: 'YOUR_ANDROID_APP_ID',
+    messagingSenderId: 'YOUR_MESSAGING_SENDER_ID',
+    projectId: 'YOUR_FIREBASE_PROJECT_ID',
+    storageBucket: 'YOUR_PROJECT.firebasestorage.app',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyCj00jXJPcNNcyEyB_AIhaIb28fPlUvDP8',
-    appId: '1:982090943295:ios:f5f344f77092c1e906218a',
-    messagingSenderId: '982090943295',
-    projectId: 'kinesentry-77c9a',
-    storageBucket: 'kinesentry-77c9a.firebasestorage.app',
-    iosBundleId: 'com.example.kinesentry1App',
+    apiKey: 'YOUR_IOS_API_KEY',
+    appId: 'YOUR_IOS_APP_ID',
+    messagingSenderId: 'YOUR_MESSAGING_SENDER_ID',
+    projectId: 'YOUR_FIREBASE_PROJECT_ID',
+    storageBucket: 'YOUR_PROJECT.firebasestorage.app',
+    iosBundleId: 'YOUR_IOS_BUNDLE_ID',
   );
 
   static const FirebaseOptions macos = FirebaseOptions(
-    apiKey: 'AIzaSyCj00jXJPcNNcyEyB_AIhaIb28fPlUvDP8',
-    appId: '1:982090943295:ios:f5f344f77092c1e906218a',
-    messagingSenderId: '982090943295',
-    projectId: 'kinesentry-77c9a',
-    storageBucket: 'kinesentry-77c9a.firebasestorage.app',
-    iosBundleId: 'com.example.kinesentry1App',
+    apiKey: 'YOUR_MACOS_API_KEY',
+    appId: 'YOUR_MACOS_APP_ID',
+    messagingSenderId: 'YOUR_MESSAGING_SENDER_ID',
+    projectId: 'YOUR_FIREBASE_PROJECT_ID',
+    storageBucket: 'YOUR_PROJECT.firebasestorage.app',
+    iosBundleId: 'YOUR_MACOS_BUNDLE_ID',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(
-    apiKey: 'AIzaSyCavQSnikdB0hrns5Sz3sE6KQjeS4UAAB0',
-    appId: '1:982090943295:web:1b7e608020a73b9d06218a',
-    messagingSenderId: '982090943295',
-    projectId: 'kinesentry-77c9a',
-    authDomain: 'kinesentry-77c9a.firebaseapp.com',
-    storageBucket: 'kinesentry-77c9a.firebasestorage.app',
-    measurementId: 'G-ZPXEWQLYXN',
+    apiKey: 'YOUR_WINDOWS_API_KEY',
+    appId: 'YOUR_WINDOWS_APP_ID',
+    messagingSenderId: 'YOUR_MESSAGING_SENDER_ID',
+    projectId: 'YOUR_FIREBASE_PROJECT_ID',
+    authDomain: 'YOUR_PROJECT.firebaseapp.com',
+    storageBucket: 'YOUR_PROJECT.firebasestorage.app',
+    measurementId: 'YOUR_WINDOWS_MEASUREMENT_ID',
   );
 }

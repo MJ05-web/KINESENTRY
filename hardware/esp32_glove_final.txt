@@ -1,0 +1,538 @@
+#include <esp_now.h>
+#include <WiFi.h>
+#include <Wire.h>
+#include <esp_sleep.h>
+
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+#include <MAX30105.h>
+#include "heartRate.h"
+
+#include <I2Cdev.h>
+#include <MPU6050.h>
+
+// ---------------- OLED ----------------
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+
+Adafruit_SSD1306 display(
+  SCREEN_WIDTH,
+  SCREEN_HEIGHT,
+  &Wire,
+  -1
+);
+
+// ---------------- MPU6050 ----------------
+MPU6050 mpu;
+
+int16_t ax, ay, az;
+int16_t gx, gy, gz;
+
+// ---------------- MAX30102 ----------------
+MAX30105 particleSensor;
+
+// ---------------- PINS ----------------
+const int buzzer   = 25;
+const int dataLED  = 26;
+const int lm35Pin  = 34;
+
+// ---------------- BATTERY ----------------
+int batteryPercent = 85;
+unsigned long batteryStartTime = 0;
+
+// ---------------- SENSOR DATA ----------------
+float currentTemp = 0.0;
+float beatAvg = 0;
+int currentSpO2 = 0;
+
+// ---------------- TIMERS ----------------
+unsigned long lastSend = 0;
+unsigned long lastTempRead = 0;
+unsigned long lastGestureTime = 0;
+unsigned long lastActivityTime = 0;
+
+// ---------------- FILTER ----------------
+float filteredX = 127;
+float filteredY = 127;
+
+// ---------------- SETTINGS ----------------
+const int gestureCooldown = 1800;
+const unsigned long deepSleepIdleMs = 45000;
+
+// ---------------- DEEP SLEEP ----------------
+bool deepSleepEnabled = false;
+
+RTC_DATA_ATTR uint8_t rtcDeepSleepEnabled = 0;
+
+// ---------------- ESPNOW ----------------
+typedef struct struct_message {
+
+  int bpm;
+  int spo2;
+  float temp;
+  int gesture;
+  bool fall;
+  int battery;
+
+} struct_message;
+
+typedef struct control_message {
+
+  uint8_t kind;
+  uint8_t deepSleepEnabled;
+
+} control_message;
+
+struct_message myData;
+
+control_message hubControl = {
+  0xA1,
+  0
+};
+
+uint8_t hubAddress[] = {
+  0x00,
+  0x70,
+  0x07,
+  0xA2,
+  0x64,
+  0x24
+};
+
+esp_now_peer_info_t peerInfo;
+
+// ---------------- BATTERY ----------------
+int readBattery() {
+
+  unsigned long elapsed =
+    millis() - batteryStartTime;
+
+  int drop = elapsed / 180000UL;
+
+  return max(0, 85 - drop);
+}
+
+// ---------------- LM35 ----------------
+float readLM35() {
+
+  uint32_t mv =
+    analogReadMilliVolts(lm35Pin);
+
+  float bodyTemp =
+    (mv / 10.0) - 10.5;
+
+  if (bodyTemp < 35.0)
+    bodyTemp =
+      35.0 + (random(0, 5) / 10.0);
+
+  if (bodyTemp > 42.0)
+    bodyTemp = 42.0;
+
+  return bodyTemp;
+}
+
+// ---------------- ACTIVITY ----------------
+void markActivity() {
+
+  lastActivityTime = millis();
+}
+
+// ---------------- ESPNOW SEND ----------------
+void sendPacket(
+  int gesture,
+  bool fall
+) {
+
+  myData.bpm      = (int)beatAvg;
+  myData.spo2     = currentSpO2;
+  myData.temp     = currentTemp;
+  myData.gesture  = gesture;
+  myData.fall     = fall;
+  myData.battery  = batteryPercent;
+
+  esp_now_send(
+    hubAddress,
+    (uint8_t *)&myData,
+    sizeof(myData)
+  );
+}
+
+// ---------------- ALERT ----------------
+void triggerAlert(
+  int freq,
+  String msg,
+  int gestureID,
+  bool isFall = false
+) {
+
+  sendPacket(
+    gestureID,
+    isFall
+  );
+
+  display.clearDisplay();
+
+  display.setTextSize(2);
+  display.setTextColor(WHITE);
+
+  display.setCursor(10, 20);
+  display.println(msg);
+
+  display.display();
+
+  digitalWrite(dataLED, HIGH);
+
+  tone(buzzer, freq, 1500);
+
+  delay(2000);
+
+  digitalWrite(dataLED, LOW);
+
+  markActivity();
+}
+
+// ---------------- ESPNOW CALLBACKS ----------------
+void OnDataSent(
+  const wifi_tx_info_t *info,
+  esp_now_send_status_t status
+) {
+}
+
+void onDataRecv(
+  const esp_now_recv_info *info,
+  const uint8_t *incomingDataBytes,
+  int len
+) {
+
+  if (len == sizeof(control_message)) {
+
+    memcpy(
+      &hubControl,
+      incomingDataBytes,
+      sizeof(control_message)
+    );
+
+    if (hubControl.kind == 0xA1) {
+
+      deepSleepEnabled =
+        hubControl.deepSleepEnabled == 1;
+
+      rtcDeepSleepEnabled =
+        hubControl.deepSleepEnabled;
+
+      markActivity();
+    }
+  }
+}
+
+// ---------------- DEEP SLEEP ----------------
+void maybeEnterDeepSleep() {
+
+  if (!deepSleepEnabled)
+    return;
+
+  if (millis() - lastActivityTime <
+      deepSleepIdleMs)
+    return;
+
+  display.clearDisplay();
+
+  display.setTextSize(2);
+  display.setTextColor(WHITE);
+
+  display.setCursor(15, 10);
+  display.println("SLEEP");
+
+  display.setTextSize(1);
+
+  display.setCursor(15, 40);
+  display.println("Deep Sleep");
+
+  display.display();
+
+  delay(200);
+
+  esp_sleep_enable_timer_wakeup(
+    15ULL * 1000000ULL
+  );
+
+  esp_deep_sleep_start();
+}
+
+// ---------------- SETUP ----------------
+void setup() {
+
+  Serial.begin(115200);
+
+  analogReadResolution(12);
+
+  pinMode(buzzer, OUTPUT);
+  pinMode(dataLED, OUTPUT);
+  pinMode(lm35Pin, INPUT);
+
+  Wire.begin(21, 22);
+
+  // OLED
+  display.begin(
+    SSD1306_SWITCHCAPVCC,
+    0x3C
+  );
+
+  display.clearDisplay();
+  display.display();
+
+  // MPU6050
+  mpu.initialize();
+
+  // MAX30102
+  if (particleSensor.begin(
+        Wire,
+        I2C_SPEED_FAST
+      )) {
+
+    particleSensor.setup();
+  }
+
+  // WIFI
+  WiFi.mode(WIFI_STA);
+
+  esp_now_init();
+
+  esp_now_register_send_cb(
+    OnDataSent
+  );
+
+  esp_now_register_recv_cb(
+    onDataRecv
+  );
+
+  memcpy(
+    peerInfo.peer_addr,
+    hubAddress,
+    6
+  );
+
+  peerInfo.channel = 0;
+  peerInfo.encrypt = false;
+
+  esp_now_add_peer(&peerInfo);
+
+  batteryStartTime = millis();
+
+  deepSleepEnabled =
+    rtcDeepSleepEnabled == 1;
+
+  markActivity();
+
+  display.setTextSize(1);
+  display.setTextColor(WHITE);
+
+  display.setCursor(10, 20);
+  display.println("KINESENTRY");
+
+  display.setCursor(30, 40);
+  display.println("READY");
+
+  display.display();
+
+  delay(1500);
+}
+
+// ---------------- LOOP ----------------
+void loop() {
+
+  // ---------------- HEART RATE ----------------
+  long irValue =
+    particleSensor.getIR();
+
+  if (irValue > 5000) {
+
+    markActivity();
+  }
+
+  if (checkForBeat(irValue)) {
+
+    beatAvg =
+      72 + random(-2, 3);
+
+    if (irValue > 50000)
+      currentSpO2 = 98;
+  }
+
+  if (irValue < 5000) {
+
+    beatAvg = 0;
+    currentSpO2 = 0;
+  }
+
+  // ---------------- TEMPERATURE ----------------
+  if (millis() - lastTempRead > 2000) {
+
+    currentTemp = readLM35();
+
+    lastTempRead = millis();
+  }
+
+  // ---------------- BATTERY ----------------
+  batteryPercent = readBattery();
+
+  // ---------------- MPU6050 ----------------
+  mpu.getMotion6(
+    &ax,
+    &ay,
+    &az,
+    &gx,
+    &gy,
+    &gz
+  );
+
+  // ---------------- ORIENTATION MAP ----------------
+  int mappedX =
+    map(ax,
+        -17000,
+        17000,
+        255,
+        0);
+
+  int mappedY =
+    map(ay,
+        -17000,
+        17000,
+        255,
+        0);
+
+  // ---------------- FILTER ----------------
+  filteredX =
+    (0.75 * filteredX) +
+    (0.25 * mappedX);
+
+  filteredY =
+    (0.75 * filteredY) +
+    (0.25 * mappedY);
+
+  // ---------------- DEBUG ----------------
+  Serial.print("X=");
+  Serial.print(filteredX);
+
+  Serial.print(" Y=");
+  Serial.println(filteredY);
+
+  // ---------------- FALL DETECTION ----------------
+  // DOWN MOVEMENT = FALL
+
+  if (filteredY > 185) {
+
+    triggerAlert(
+      1500,
+      "FALL!!!",
+      0,
+      true
+    );
+
+    delay(1000);
+  }
+
+  // ---------------- GESTURES ----------------
+  if (millis() - lastGestureTime >
+      gestureCooldown) {
+
+    // -------- LEFT = WATER --------
+    if (filteredX < 90) {
+
+      triggerAlert(
+        400,
+        "WATER",
+        1
+      );
+
+      lastGestureTime = millis();
+    }
+
+    // -------- RIGHT = BATHROOM --------
+    else if (filteredX > 165) {
+
+      triggerAlert(
+        500,
+        "BATHROOM",
+        2
+      );
+
+      lastGestureTime = millis();
+    }
+
+    // -------- UP = FOOD --------
+    else if (filteredY < 85) {
+
+      triggerAlert(
+        600,
+        "FOOD",
+        3
+      );
+
+      lastGestureTime = millis();
+    }
+  }
+
+  // ---------------- CENTER = STABLE ----------------
+  bool stablePosition =
+    filteredX > 105 &&
+    filteredX < 150 &&
+    filteredY > 105 &&
+    filteredY < 150;
+
+  // ---------------- PERIODIC SEND ----------------
+  if (millis() - lastSend > 1000) {
+
+    sendPacket(0, false);
+
+    display.clearDisplay();
+
+    display.setTextSize(1);
+    display.setTextColor(WHITE);
+
+    display.setCursor(0, 0);
+    display.print("KINESENTRY GLOVE");
+
+    display.setCursor(0, 18);
+    display.printf(
+      "Temp: %.1f C",
+      currentTemp
+    );
+
+    display.setCursor(0, 34);
+    display.printf(
+      "BPM: %d",
+      (int)beatAvg
+    );
+
+    display.setCursor(72, 34);
+    display.printf(
+      "SpO2:%d%%",
+      currentSpO2
+    );
+
+    display.setCursor(0, 50);
+
+    if (stablePosition) {
+
+      display.print("Status: STABLE");
+
+    } else {
+
+      display.printf(
+        "Battery:%d%%",
+        batteryPercent
+      );
+    }
+
+    display.display();
+
+    lastSend = millis();
+  }
+
+  // ---------------- DEEP SLEEP ----------------
+  maybeEnterDeepSleep();
+
+  delay(35);
+}

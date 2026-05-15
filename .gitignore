@@ -32,6 +32,12 @@ migrate_working_dir/
 .pub/
 /build/
 /coverage/
+/tmp/
+/android/build/
+/ios/Pods/
+/macos/Pods/
+/linux/build/
+/windows/flutter/ephemeral/
 
 # Symbolication related
 app.*.symbols
@@ -43,3 +49,13 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Sensitive local config - keep out of GitHub
+android/key.properties
+*.jks
+*.keystore
+.env
+.env.*
+ios/Runner/GoogleService-Info.plist
+macos/Runner/GoogleService-Info.plist
+android/local.properties

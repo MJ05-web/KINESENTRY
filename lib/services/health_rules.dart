@@ -21,12 +21,14 @@ class HealthRules {
   static const categoryBattery = 'battery';
 
   static Map<String, dynamic> normalize(Map<String, dynamic> data) {
+    final fallValue = _number(data['fall']);
+
     return {
       'bpm': _number(data['bpm']),
       'spo2': _number(data['spo2']),
       'temp': _number(data['temp']),
       'gesture': _number(data['gesture']),
-      'fall': _number(data['fall']),
+      'fall': fallValue > 0 ? 1.0 : 0.0,
       'battery': _number(data['battery'], fallback: 100),
       'time': data['time'] is DateTime ? data['time'] : DateTime.now(),
     };
@@ -45,7 +47,7 @@ class HealthRules {
 
     final alerts = <HealthAlert>[];
 
-    if (fall >= 5) {
+    if (fall > 0) {
       alerts.add(
         const HealthAlert(
           key: 'fall',
@@ -131,12 +133,12 @@ class HealthRules {
           title: text,
           detail: 'Gesture command received.',
           category: categoryGesture,
-          severity: gesture >= 6 ? 'critical' : 'gesture',
+          severity: 'gesture',
         ),
       );
     }
 
-    if (battery < 20) {
+    if (battery < 30) {
       alerts.add(
         HealthAlert(
           key: 'battery-critical',
@@ -144,16 +146,6 @@ class HealthRules {
           detail: '$battery% remaining. Charge now.',
           category: categoryBattery,
           severity: 'critical',
-        ),
-      );
-    } else if (battery < 50) {
-      alerts.add(
-        HealthAlert(
-          key: 'battery-warning',
-          title: 'Battery low',
-          detail: '$battery% remaining.',
-          category: categoryBattery,
-          severity: 'warning',
         ),
       );
     }
@@ -169,12 +161,6 @@ class HealthRules {
         return 'Need washroom';
       case 3:
         return 'Need food';
-      case 4:
-        return 'Need medicine';
-      case 5:
-        return 'In pain';
-      case 6:
-        return 'Emergency help needed';
       default:
         return 'Stable';
     }
@@ -193,6 +179,7 @@ class HealthRules {
 
   static double _number(dynamic value, {double fallback = 0}) {
     if (value is num) return value.toDouble();
+    if (value is String) return double.tryParse(value) ?? fallback;
     return fallback;
   }
 }

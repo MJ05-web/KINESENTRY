@@ -1,13 +1,14 @@
 {
+  "_comment": "Sanitized placeholder file. Replace with the real google-services.json from Firebase before running the Android app.",
   "project_info": {
-    "project_number": "982090943295",
-    "project_id": "kinesentry-77c9a",
-    "storage_bucket": "kinesentry-77c9a.firebasestorage.app"
+    "project_number": "YOUR_PROJECT_NUMBER",
+    "project_id": "YOUR_FIREBASE_PROJECT_ID",
+    "storage_bucket": "YOUR_PROJECT.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:982090943295:android:f6bc5803dcbbc58206218a",
+        "mobilesdk_app_id": "YOUR_ANDROID_APP_ID",
         "android_client_info": {
           "package_name": "com.example.kinesentry1_app"
         }
@@ -15,7 +16,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyDZllG6TT1hOUjuKWcgR5UEp9G4tdLXSyo"
+          "current_key": "YOUR_ANDROID_API_KEY"
         }
       ],
       "services": {

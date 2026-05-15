@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
+import '../theme/app_theme.dart';
+import '../widgets/app_chrome.dart';
+import '../widgets/app_footer.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -8,11 +11,24 @@ class SplashScreen extends StatefulWidget {
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen> {
+class _SplashScreenState extends State<SplashScreen>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _introController;
+
   @override
   void initState() {
     super.initState();
+    _introController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1800),
+    )..forward();
     _initApp();
+  }
+
+  @override
+  void dispose() {
+    _introController.dispose();
+    super.dispose();
   }
 
   void _initApp() async {
@@ -37,58 +53,59 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
-      body: Container(
-        width: double.infinity,
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFFFFFFFF), Color(0xFFF4F7FB), Color(0xFFEAF7F5)],
-          ),
-        ),
-        child: SafeArea(
-          child: Column(
-            children: [
-              const Spacer(),
-              Hero(
-                tag: 'kinesentry-logo',
-                child: Image.asset(
-                  'assets/images/logo.png',
-                  height: 210,
-                  fit: BoxFit.contain,
+      backgroundColor: Colors.transparent,
+      body: AppChrome(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
+        safeBottom: true,
+        child: AnimatedBuilder(
+          animation: _introController,
+          builder: (context, _) {
+            final t = Curves.easeOutCubic.transform(_introController.value);
+            return Column(
+              children: [
+                const Spacer(),
+                Transform.scale(
+                  scale: 0.86 + (t * .14),
+                  child: Transform.translate(
+                    offset: Offset(0, (1 - t) * 26),
+                    child: Hero(
+                      tag: 'kinesentry-logo',
+                      child: GlassPanel(
+                        borderRadius: 36,
+                        padding: const EdgeInsets.all(24),
+                        glowColor: AppThemeColors.accent(context).withValues(alpha: .16),
+                        child: Image.asset(
+                          'assets/images/logo.png',
+                          height: 180,
+                          fit: BoxFit.contain,
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 26),
-              const Text(
-                'KineSentry',
-                style: TextStyle(
-                  color: Color(0xFF0D1117),
-                  fontSize: 36,
-                  fontWeight: FontWeight.w800,
+                const SizedBox(height: 28),
+                Opacity(
+                  opacity: t,
+                  child: const AccentHeadline(
+                    title: 'KineSentry',
+                    subtitle: 'Patient monitoring, ready the moment care needs it.',
+                    center: true,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Patient monitoring, ready when you are',
-                style: TextStyle(
-                  color: Color(0xFF667085),
-                  fontSize: 15,
-                  fontWeight: FontWeight.w500,
+                const Spacer(),
+                SizedBox(
+                  height: 40,
+                  width: 40,
+                  child: CircularProgressIndicator(
+                    color: AppThemeColors.accent(context),
+                    strokeWidth: 3.2,
+                  ),
                 ),
-              ),
-              const Spacer(),
-              const SizedBox(
-                height: 34,
-                width: 34,
-                child: CircularProgressIndicator(
-                  color: Color(0xFF0D1117),
-                  strokeWidth: 3,
-                ),
-              ),
-              const SizedBox(height: 42),
-            ],
-          ),
+                const SizedBox(height: 24),
+                AppFooter(light: !AppThemeColors.isDark(context)),
+              ],
+            );
+          },
         ),
       ),
     );

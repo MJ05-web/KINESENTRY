@@ -1,20 +1,11 @@
 import 'package:firebase_auth/firebase_auth.dart';
 
 class KinesentryCredentials {
-  static const email = String.fromEnvironment(
+  static const allowedEmail = String.fromEnvironment(
     'KINESENTRY_FIREBASE_EMAIL',
-    defaultValue: 'kinesentryhub@gmail.com',
+    // Add your allowed Firebase login email here when restoring the project.
+    defaultValue: '',
   );
-
-  static const password = String.fromEnvironment(
-    'KINESENTRY_FIREBASE_PASSWORD',
-    defaultValue: 'KineSentry@123',
-  );
-
-  static bool matches(String inputEmail, String inputPassword) {
-    return inputEmail.trim().toLowerCase() == email.toLowerCase() &&
-        inputPassword.trim() == password;
-  }
 }
 
 class AuthService {
@@ -23,21 +14,24 @@ class AuthService {
   Future<User?> login(String email, String password) async {
     try {
       final res = await _auth.signInWithEmailAndPassword(
-        email: email,
-        password: password,
+        email: email.trim(),
+        password: password.trim(),
       );
-      return res.user;
-    } catch (e) {
+
+      final user = res.user;
+      if (user == null) return null;
+
+      if (KinesentryCredentials.allowedEmail.isNotEmpty &&
+          user.email?.toLowerCase() !=
+              KinesentryCredentials.allowedEmail.toLowerCase()) {
+        await _auth.signOut();
+        return null;
+      }
+
+      return user;
+    } catch (_) {
       return null;
     }
-  }
-
-  Future<User?> loginSingleHub(String email, String password) async {
-    if (!KinesentryCredentials.matches(email, password)) {
-      return null;
-    }
-
-    return login(KinesentryCredentials.email, KinesentryCredentials.password);
   }
 
   User? get currentUser => _auth.currentUser;
@@ -46,7 +40,9 @@ class AuthService {
     final userEmail = _auth.currentUser?.email;
     if (userEmail == null) return false;
 
-    return userEmail.toLowerCase() == KinesentryCredentials.email.toLowerCase();
+    if (KinesentryCredentials.allowedEmail.isEmpty) return true;
+    return userEmail.toLowerCase() ==
+        KinesentryCredentials.allowedEmail.toLowerCase();
   }
 
   Future<void> logout() async {
