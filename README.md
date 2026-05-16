@@ -11,7 +11,7 @@ you can safely upload the source and restore the real config later when needed.
 
 ## Highlights
 
-![KineSentry Architecture]((<img width="1491" height="1055" alt="cdb656cb-87f4-4f3b-b7bc-00168e898f82" src="https://github.com/user-attachments/assets/236ca315-e255-4c89-ba13-60cbc3bc3e07" />
+((<img width="1491" height="1055" alt="cdb656cb-87f4-4f3b-b7bc-00168e898f82" src="https://github.com/user-attachments/assets/236ca315-e255-4c89-ba13-60cbc3bc3e07" />
 ))
 
 - Live monitoring of heart rate, SpO2, temperature, gestures, falls, and battery
