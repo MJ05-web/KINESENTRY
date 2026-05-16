@@ -11,7 +11,8 @@ you can safely upload the source and restore the real config later when needed.
 
 ## Highlights
 
-![KineSentry Architecture]([docs/kinesentry_architecture.png](https://chatgpt.com/backend-api/estuary/content?id=file_000000002d4c71fd8cfb02d74fe968eb&ts=494144&p=fs&cid=1&sig=f509ea3d4bfea66bdc87d209ce845783656e3059ac422c1a910baa2ccd716a94&v=0))
+![KineSentry Architecture]((<img width="1491" height="1055" alt="cdb656cb-87f4-4f3b-b7bc-00168e898f82" src="https://github.com/user-attachments/assets/236ca315-e255-4c89-ba13-60cbc3bc3e07" />
+))
 
 - Live monitoring of heart rate, SpO2, temperature, gestures, falls, and battery
 - ESP-NOW communication between glove and hub
