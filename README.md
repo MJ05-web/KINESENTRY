@@ -301,23 +301,6 @@ git branch -M main
 git push -u origin main
 ```
 
-## Recommended Final Check Before Push
-
-Run these locally once before uploading:
-
-```powershell
-git diff
-git status
-```
-
-Confirm that:
-
-- no real Firebase values are present
-- no signing keys are present
-- no `.env` file is present
-- no machine-specific secrets are present
-
-## Notes
 
 - The project includes both application code and hardware firmware sources.
 - The sanitized files are intentionally not runnable until you restore your real config.
