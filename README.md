@@ -11,6 +11,8 @@ you can safely upload the source and restore the real config later when needed.
 
 ## Highlights
 
+![KineSentry Architecture]([docs/kinesentry_architecture.png](https://chatgpt.com/backend-api/estuary/content?id=file_000000002d4c71fd8cfb02d74fe968eb&ts=494144&p=fs&cid=1&sig=f509ea3d4bfea66bdc87d209ce845783656e3059ac422c1a910baa2ccd716a94&v=0))
+
 - Live monitoring of heart rate, SpO2, temperature, gestures, falls, and battery
 - ESP-NOW communication between glove and hub
 - BLE communication between hub and Flutter app
