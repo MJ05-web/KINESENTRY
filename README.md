@@ -9,6 +9,14 @@ This repository is a sanitized GitHub-ready backup of the codebase. Sensitive
 Firebase values and other local secrets have been replaced with placeholders so
 you can safely upload the source and restore the real config later when needed.
 
+## App Glance and Demo
+
+https://github.com/user-attachments/assets/09d87c92-a85d-4d30-bcd0-5f1786fe9905
+View Overall Demonstration here : https://www.youtube.com/watch?v=uDa3mpUsaw0
+
+
+
+
 ## Highlights
 
 <img width="1491" height="1055" alt="cdb656cb-87f4-4f3b-b7bc-00168e898f82" src="https://github.com/user-attachments/assets/236ca315-e255-4c89-ba13-60cbc3bc3e07" />
