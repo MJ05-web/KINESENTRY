@@ -1,4 +1,4 @@
-# KineSentry  <img width="50" height="50" alt="Screenshot 2026-05-21 183632" src="https://github.com/user-attachments/assets/b355b14e-d4da-47e9-8ead-fa510299cab9" />
+# KineSentry  <img width="75" height="75" alt="Screenshot 2026-05-21 183632" src="https://github.com/user-attachments/assets/b355b14e-d4da-47e9-8ead-fa510299cab9" />
 
 
 KineSentry is a smart patient-monitoring system built around a wearable glove,
