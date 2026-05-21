@@ -13,7 +13,9 @@ Firebase values and other local secrets have been replaced.
 
 <img width="1340" height="739" alt="Screenshot 2026-05-21 182354" src="https://github.com/user-attachments/assets/14607a95-5a7f-4efd-884e-7aaf9e1dc068" />
 
-https://github.com/user-attachments/assets/09d87c92-a85d-4d30-bcd0-5f1786fe9905
+ ## App Glance
+ 
+ https://github.com/user-attachments/assets/09d87c92-a85d-4d30-bcd0-5f1786fe9905
 
  - View Overall Demonstration here : [https://www.youtube.com/watch?v=uDa3mpUsaw0](https://youtu.be/Q-GPc6-O0EY?si=uJSF82TzNpjaYWdx)
 
