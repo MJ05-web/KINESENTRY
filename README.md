@@ -1,4 +1,5 @@
-# KineSentry
+# KineSentry  <img width="394" height="430" alt="Screenshot 2026-05-21 183632" src="https://github.com/user-attachments/assets/b355b14e-d4da-47e9-8ead-fa510299cab9" />
+
 
 KineSentry is a smart patient-monitoring system built around a wearable glove,
 an ESP32 hub, and a Flutter application. It captures vital signs and motion,
