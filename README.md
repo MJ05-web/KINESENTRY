@@ -6,8 +6,7 @@ streams them to the app in real time, triggers alerts, generates reports, and
 stores report snapshots in Firebase.
 
 This repository is a sanitized GitHub-ready backup of the codebase. Sensitive
-Firebase values and other local secrets have been replaced with placeholders so
-you can safely upload the source and restore the real config later when needed.
+Firebase values and other local secrets have been replaced.
 
 ## Hardware + App Glance(Demonstration Included)
 
