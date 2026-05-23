@@ -11,7 +11,7 @@ Firebase values and other local secrets have been replaced.
 
 ## Hardware + App Glance(Demonstration Included)
 
-<img width="1340" height="739" alt="Screenshot 2026-05-21 182354" src="https://github.com/user-attachments/assets/14607a95-5a7f-4efd-884e-7aaf9e1dc068" />
+<img width="1688" height="932" alt="3ebcac46-3097-49ac-944e-0378141571d4" src="https://github.com/user-attachments/assets/4306a632-460d-4042-a822-4e526a60360d" />
 
  ## App Glance
  
