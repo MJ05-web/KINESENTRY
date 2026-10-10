@@ -18,33 +18,10 @@ Firebase values and other local secrets have been replaced.
  https://github.com/user-attachments/assets/09d87c92-a85d-4d30-bcd0-5f1786fe9905
 
  - View Overall Demonstration here : [https://www.youtube.com/watch?v=uDa3mpUsaw0](https://youtu.be/Q-GPc6-O0EY?si=uJSF82TzNpjaYWdx)
-
-
-## Highlights
-
-<img width="1491" height="1055" alt="cdb656cb-87f4-4f3b-b7bc-00168e898f82" src="https://github.com/user-attachments/assets/236ca315-e255-4c89-ba13-60cbc3bc3e07" />
-
-
-- Live monitoring of heart rate, SpO2, temperature, gestures, falls, and battery
-- ESP-NOW communication between glove and hub
-- BLE communication between hub and Flutter app
-- Alert pipeline with in-app feedback, sound, voice, and notifications
-- Session, hourly, and daily reporting
-- PDF report generation and Firestore report storage
-- Settings for dark mode, dummy data, deep sleep, speaker routing, and alerts
+ - 
 
 ## Architecture
-
-![KineSentry Architecture](docs/kinesentry_architecture.png)
-
-The diagram above represents the complete operating flow:
-
-1. Sensors on the glove capture body data and motion.
-2. The ESP32 glove controller packages that information.
-3. The hub receives it over ESP-NOW and exposes it to the app over BLE.
-4. The Flutter app parses, analyzes, displays, alerts, and stores report data.
-5. Firebase Auth and Firestore support login and report persistence.
-6. Phone and OS services handle notifications, text-to-speech, audio playback, PDF viewing, and preferences.
+<img width="3508" height="2479" alt="Document 23_1" src="https://github.com/user-attachments/assets/39f98186-296d-4517-b59b-0576ef174099" />
 
 ## System Breakdown
 
