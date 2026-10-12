@@ -18,8 +18,8 @@ Firebase values and other local secrets have been replaced.
  https://github.com/user-attachments/assets/09d87c92-a85d-4d30-bcd0-5f1786fe9905
 
  - View Overall Demonstration here : [https://www.youtube.com/watch?v=uDa3mpUsaw0](https://youtu.be/Q-GPc6-O0EY?si=uJSF82TzNpjaYWdx)
- - 
 
+   
 ## Architecture
 <img width="3508" height="2479" alt="Document 23_1" src="https://github.com/user-attachments/assets/39f98186-296d-4517-b59b-0576ef174099" />
 
